@@ -71,7 +71,7 @@ def panel_as_of(
     return result.reset_index(drop=True)
 
 
-def _rank_prices(panel: pd.DataFrame, cohort: list[str], as_of: date, lag_pair: tuple[int, int], name: str) -> list[Candidate]:
+def _rank_prices(panel: pd.DataFrame, cohort: list[str], as_of: date, lag_pair: tuple[int, int], name: str, ascending: bool) -> list[Candidate]:
     """Rank cohort ids using valid adjusted closes at the requested session offsets."""
     if (panel["session_date"] > as_of).any():
         raise ValueError("panel contains a session after as_of")
@@ -103,7 +103,7 @@ def _rank_prices(panel: pd.DataFrame, cohort: list[str], as_of: date, lag_pair: 
             continue
         score = prices[0] / prices[1] - 1
         candidates.append(Candidate(security_id, score, f"{name}={score:.4f}"))
-    return sorted(candidates, key=lambda item: ((item.score if name == "ret5" else -item.score), item.security_id))
+    return sorted(candidates, key=lambda item: ((item.score if ascending else -item.score), item.security_id))
 
 
 @dataclass(frozen=True)
@@ -116,7 +116,7 @@ class ReversalFiveDay:
 
     def rank(self, panel: pd.DataFrame, cohort: list[str], as_of: date) -> list[Candidate]:
         """Rank the cohort by adjusted close return over five sessions."""
-        return _rank_prices(panel, cohort, as_of, (0, 5), "ret5")
+        return _rank_prices(panel, cohort, as_of, (0, 5), "ret5", ascending=True)
 
 
 @dataclass(frozen=True)
@@ -129,7 +129,7 @@ class MomentumTwelveOne:
 
     def rank(self, panel: pd.DataFrame, cohort: list[str], as_of: date) -> list[Candidate]:
         """Rank the cohort by adjusted close return from 252 to 21 sessions back."""
-        return _rank_prices(panel, cohort, as_of, (21, 252), "mom12_1")
+        return _rank_prices(panel, cohort, as_of, (21, 252), "mom12_1", ascending=False)
 
 
 STRATEGIES: dict[str, Strategy] = {
