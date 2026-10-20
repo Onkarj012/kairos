@@ -10,6 +10,7 @@ Approved defaults:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import floor
 from typing import TYPE_CHECKING, Sequence
 
 from evidence.costs import ZERODHA_DELIVERY
@@ -26,6 +27,13 @@ MAX_GROSS_SHARE = 0.80
 HOLD_SESSIONS = 3
 COST_MODEL = ZERODHA_DELIVERY
 LIQUIDITY_BUCKET = "liquid"
+
+
+def rescaled_quantity(qty: int, old_factor: float, new_factor: float) -> int:
+    """Rescale whole shares while correcting floating-point near-integers."""
+    raw = qty * new_factor / old_factor
+    nearest = round(raw)
+    return nearest if abs(raw - nearest) < 1e-9 else floor(raw)
 
 
 @dataclass(frozen=True)

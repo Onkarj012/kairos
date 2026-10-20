@@ -8,7 +8,7 @@ import pytest
 from evidence.costs import DEFAULT_COST_MODEL, ZERODHA_DELIVERY
 from evidence.daily_backtest import run_backtest
 from models.daily_baselines import Candidate
-from ops.daily_rules import entry_fills, exit_fills, plan_entries
+from ops.daily_rules import entry_fills, exit_fills, plan_entries, rescaled_quantity
 
 
 def test_zerodha_delivery_costs_match_hand_calculation() -> None:
@@ -34,6 +34,12 @@ def test_entry_and_exit_bands() -> None:
     assert not entry_fills(102.01, 100)
     assert exit_fills(98, 100)
     assert not exit_fills(97.99, 100)
+
+
+def test_rescaled_quantity_rounds_near_integers_and_floors_fractions() -> None:
+    assert rescaled_quantity(43, 0.1, 0.2) == 86
+    assert rescaled_quantity(3, 1.0, 1 / 3) == 1
+    assert rescaled_quantity(5, 1.0, 0.5) == 2
 
 
 def test_plan_entries_caps_skips_and_trims_gross() -> None:

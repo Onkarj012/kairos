@@ -49,7 +49,6 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run daily baseline development-fold backtests.")
     parser.add_argument("--out", type=Path, default=root / "daily-runner/backtest-v1")
     parser.add_argument("--ledger", type=Path, default=root / "daily-runner/research-ledger-v1/events.jsonl")
-    parser.add_argument("--strategies", nargs="*", default=list(STRATEGIES), choices=tuple(STRATEGIES))
     return parser
 
 
@@ -260,17 +259,12 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
     sessions = [session for session in sessions if session < HOLDOUT_START]
     assert_dev_only(sessions)
     cohorts = _cohort_by_month(cohort)
-    selected = list(args.strategies)
-    if not selected:
-        selected = list(STRATEGIES)
-    if len(set(selected)) != len(selected):
-        raise ValueError("strategy names must be unique")
     prior_identities = {
         str(event.payload["strategy"])
         for event in read_events(args.ledger)
         if event.event_type == "GATE_VERDICT" and isinstance(event.payload.get("strategy"), str)
     }
-    identities = prior_identities | {f"{name}@{STRATEGIES[name].version}" for name in selected}
+    identities = prior_identities | {f"{name}@{strategy.version}" for name, strategy in STRATEGIES.items()}
     k = global_k() + len(identities)
     panel_hash = _sha256(panel_path)
     cohort_hash = _sha256(cohort_path)
@@ -279,7 +273,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
     moves = pd.read_csv(moves_path, dtype={"security_id": str}, keep_default_na=False) if moves_path.exists() else pd.DataFrame()
     outcomes: dict[str, dict[str, Any]] = {}
     report_lines = ["# Daily baseline development-fold report", ""]
-    for strategy_name in selected:
+    for strategy_name in STRATEGIES:
         cache = _rank_cache(strategy_name, panel, sessions, cohorts)
         account_data: dict[int, dict[str, Any]] = {}
         for account in ACCOUNTS:
@@ -345,7 +339,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
         "",
     ])
     _write_outputs(args.out, outcomes, "\n".join(report_lines))
-    for strategy_name in selected:
+    for strategy_name in STRATEGIES:
         payload = {key: value for key, value in outcomes[strategy_name]["verdict"].items() if key in {
             "strategy", "label", "account", "eligible", "rejection_reasons", "checks", "k", "dsr",
             "break_even_k", "per_fold_mean_bps", "git_commit", "git_dirty", "panel_sha256", "cohort_sha256",

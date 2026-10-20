@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from math import floor
 from typing import Callable
 
 import pandas as pd
@@ -17,6 +16,7 @@ from ops.daily_rules import (
     exit_fills,
     entry_fills,
     plan_entries,
+    rescaled_quantity,
     sell_costs,
 )
 
@@ -103,7 +103,7 @@ def run_backtest(
                 continue
             factor = value(row, "adj_factor")
             if factor and position.last_factor and factor != position.last_factor:
-                position.qty = floor(position.qty * factor / position.last_factor)
+                position.qty = rescaled_quantity(position.qty, position.last_factor, factor)
                 position.trade["qty"] = position.qty
                 position.trade["flags"] = _add_flag(position.trade["flags"], "qty_rescaled")
             position.last_factor = factor
