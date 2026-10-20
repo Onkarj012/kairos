@@ -27,21 +27,22 @@ def assert_dev_only(sessions: Iterable[date]) -> None:
         raise ValueError("development data contains a sealed holdout session")
 
 
+HOLDOUT_SEAL_ID = "holdout-sealed-2025-10-01"
+
+
 def ensure_holdout_sealed(ledger: ResearchLedgerWriter) -> ResearchEvent:
-    """Append the fixed holdout seal event before development run events."""
+    """Append the holdout seal as the ledger's first event; a repeat call returns the stored seal."""
     events = read_events(ledger.path)
-    for event in events:
-        if event.event_id == "holdout-sealed-2025-10-01":
-            return ledger.append(
-                event_id="holdout-sealed-2025-10-01", event_type="HOLDOUT_SEALED",
-                study_id="daily-runner-stage1", job_id="holdout", attempt=1,
-                payload={"holdout_start": HOLDOUT_START.isoformat(), "holdout_end": HOLDOUT_END.isoformat(), "policy": "dev runs must not read sessions >= holdout_start; spending the holdout needs Onkar's approval"},
-            )
+    if events and events[0].event_id != HOLDOUT_SEAL_ID:
         raise ValueError("holdout must be sealed before any research ledger event")
     return ledger.append(
-        event_id="holdout-sealed-2025-10-01", event_type="HOLDOUT_SEALED",
+        event_id=HOLDOUT_SEAL_ID, event_type="HOLDOUT_SEALED",
         study_id="daily-runner-stage1", job_id="holdout", attempt=1,
-        payload={"holdout_start": HOLDOUT_START.isoformat(), "holdout_end": HOLDOUT_END.isoformat(), "policy": "dev runs must not read sessions >= holdout_start; spending the holdout needs Onkar's approval"},
+        payload={
+            "holdout_start": HOLDOUT_START.isoformat(),
+            "holdout_end": HOLDOUT_END.isoformat(),
+            "policy": "dev runs must not read sessions >= holdout_start; spending the holdout needs Onkar's approval",
+        },
     )
 
 
