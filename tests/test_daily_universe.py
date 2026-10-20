@@ -106,13 +106,11 @@ def test_unproven_id_is_dropped_and_placeholder_side_is_not() -> None:
     assert cohort.summary["ever_members_with_unproven_rename"] == 0
 
 
-def test_month_closes_on_last_expected_session_when_ledger_covers_weekend_end() -> None:
-    """A Friday panel end completes the month when the ledger reaches the Sunday calendar end."""
-    sessions = [date(2024, 5, 31), date(2024, 6, 3), date(2024, 6, 27), date(2024, 6, 28)]
+def test_month_publishes_once_its_rank_session_is_in_the_panel() -> None:
+    """The live month is ranked on the last session before it, so it publishes before it ends."""
+    sessions = [date(2026, 9, 29), date(2026, 9, 30), date(2026, 10, 1), date(2026, 10, 21)]
 
-    assert _month_ranks(sessions, date(2024, 6, 28), "2024-06", date(2024, 6, 30)) == [("2024-06", 0)]
-
-    october_sessions = [date(2026, 9, 30), date(2026, 10, 1), date(2026, 10, 30)]
-    assert _month_ranks(october_sessions, date(2026, 10, 30), "2026-10", date(2026, 10, 30)) == [("2026-10", 0)]
-    july_sessions = [date(2026, 6, 30), date(2026, 7, 1), date(2026, 7, 31)]
-    assert _month_ranks(july_sessions, date(2026, 7, 31), "2026-07", date(2026, 7, 30)) == []
+    assert _month_ranks(sessions, date(2026, 10, 21), "2026-10") == [("2026-10", 1)]
+    assert _month_ranks(sessions, date(2026, 9, 30), "2026-10") == [("2026-10", 1)]
+    assert _month_ranks(sessions, date(2026, 9, 29), "2026-10") == []
+    assert _month_ranks(sessions[:2], date(2026, 9, 30), "2026-10") == []

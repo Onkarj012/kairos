@@ -33,6 +33,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build the monthly top-200 liquidity cohort.")
     parser.add_argument("--panel", type=Path, default=root / PANEL_DIR, help="panel dir holding panel.parquet")
     parser.add_argument("--lineage", type=Path, default=root / LINEAGE_DIR, help="lineage dir holding renames.csv")
+    parser.add_argument("--ledger", type=Path, default=root / LEDGER, help="session ledger sessions.jsonl")
     parser.add_argument("--out", type=Path, default=root / COHORT_DIR)
     return parser
 
@@ -50,11 +51,6 @@ def _ledger_sessions(path: Path) -> list[date]:
         if row["state"] == "expected"
     }
     return sorted(s for s in sessions if s >= START)
-
-
-def _ledger_coverage_end(path: Path) -> date:
-    """Last calendar date covered by the session ledger."""
-    return max(date.fromisoformat(row["session_date"]) for row in map(json.loads, path.read_text(encoding="utf-8").splitlines()))
 
 
 def _write_outputs(out_dir: Path, cohort: Cohort, hashes: dict[str, str]) -> None:
@@ -81,10 +77,9 @@ def main(argv: list[str] | None = None) -> int:
     renames_path = args.lineage / RENAMES_FILE
     cohort = build_cohort(
         pd.read_parquet(panel_path),
-        _ledger_sessions(root / LEDGER),
+        _ledger_sessions(args.ledger),
         pd.read_csv(renames_path, dtype={"old": str, "new": str, "linked": bool}, keep_default_na=False),
         pd.read_csv(root / FUNDS, dtype={"symbol": str}, keep_default_na=False),
-        ledger_end=_ledger_coverage_end(root / LEDGER),
     )
     hashes = {
         "panel_sha256": _sha256(panel_path),
