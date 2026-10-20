@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -19,12 +20,17 @@ class PromotionGateThresholds:
     min_distinct_symbols: int = 20
     min_positive_fold_share: float = 0.70
     worst_fold_floor_bps: float = 0.0
-    min_dsr: float = 0.0
+    min_dsr: float = 0.95
     require_baseline_sharpe_beaten: bool = True
     require_sealed_test: bool = True
 
 
 DEFAULT_PROMOTION_THRESHOLDS = PromotionGateThresholds()
+
+
+def evaluate_candidate(candidate: Mapping[str, Any], thresholds: PromotionGateThresholds) -> dict[str, Any]:
+    """Evaluate trades, trading_days, max_symbol_trade_share, distinct_symbols, folds[*].net_expectancy_bps, cost_scenarios.full_cost.expectancy_ci95_low_bps, and deflated_sharpe_ratio."""
+    return _readiness(dict(candidate), {}, thresholds)
 
 
 def build_promotion_readiness_report(
@@ -134,7 +140,7 @@ def _readiness(candidate: dict[str, Any] | None, artifacts: dict[str, dict[str, 
         "folds_positive_share": fold_share >= thresholds.min_positive_fold_share,
         "worst_fold_floor": worst_fold >= thresholds.worst_fold_floor_bps,
         "beats_rung0_baselines_net_sharpe": beats_baselines if thresholds.require_baseline_sharpe_beaten else True,
-        "deflated_sharpe_positive": float(candidate.get("deflated_sharpe_ratio", candidate.get("dsr", 0.0)) or 0.0) > thresholds.min_dsr,
+        "deflated_sharpe_min": float(candidate.get("deflated_sharpe_ratio", candidate.get("dsr", 0.0)) or 0.0) >= thresholds.min_dsr,
         "sealed_test_once_passed": sealed_passed if thresholds.require_sealed_test else True,
         "test_accessed_false": all((item.get("data") or {}).get("test_accessed", False) is False for item in artifacts.values() if item.get("data")),
     }
@@ -142,7 +148,7 @@ def _readiness(candidate: dict[str, Any] | None, artifacts: dict[str, dict[str, 
         item = side_results.get(side, {})
         if int(item.get("count", 0) or 0):
             checks[f"{side}_min_distinct_symbols"] = int(item.get("distinct_symbols", 0)) >= thresholds.min_distinct_symbols
-    breadth = artifacts["breadth"].get("data") or {}
+    breadth = (artifacts.get("breadth") or {}).get("data") or {}
     if breadth:
         checks["breadth_structurally_feasible"] = bool(breadth.get("production_gate_feasibility", {}).get("structurally_feasible_at_observed_breadth"))
     reasons = [name for name, passed in checks.items() if not passed]
