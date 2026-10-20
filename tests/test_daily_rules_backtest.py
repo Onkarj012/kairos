@@ -56,7 +56,7 @@ def test_plan_entries_caps_skips_and_trims_gross() -> None:
 
 def _sessions(count: int = 6) -> list[date]:
     """Return consecutive synthetic trading sessions."""
-    return [date(2026, 1, 1) + timedelta(days=offset) for offset in range(count)]
+    return [date(2025, 9, 1) + timedelta(days=offset) for offset in range(count)]
 
 
 def _panel(
@@ -150,7 +150,7 @@ def test_engine_waits_for_missing_exit_row_and_rescales_split_qty() -> None:
     assert "missing_exit_row" in missing["flags"]
     no_data_panel = _panel(sessions, omit={sessions[4], sessions[5]})
     no_data = _run(no_data_panel, sessions).trades.iloc[0]
-    assert no_data["exit_session"] == sessions[3]
+    assert no_data["exit_session"] == sessions[5]
     assert no_data["exit_price"] == 100
     assert no_data["exit_reason"] == "no_exit_data"
     assert "no_exit_data" in no_data["flags"]
@@ -158,11 +158,87 @@ def test_engine_waits_for_missing_exit_row_and_rescales_split_qty() -> None:
         sessions[:5],
         opens={sessions[4]: 50},
         closes={sessions[1]: 100, sessions[2]: 50, sessions[3]: 50, sessions[4]: 50},
-        factors={sessions[0]: 0.5, sessions[1]: 0.5},
-        prev_closes={sessions[3]: 50, sessions[4]: 50},
-        prev_close_factors={sessions[0]: 0.5, sessions[1]: 0.5, sessions[2]: 0.5},
+        factors={sessions[0]: 0.5, sessions[1]: 0.5, sessions[2]: 0.5, sessions[3]: 0.5, sessions[4]: 1.0},
+        prev_closes={sessions[4]: 100},
+        prev_close_factors={sessions[4]: 0.5},
     )
     split = _run(split_panel, sessions[:5]).trades.iloc[0]
     assert split["qty"] == 2 * 19
     assert "qty_rescaled" in split["flags"]
     assert split["net_pnl"] == pytest.approx(38 * 50 - 19 * 100 - split["buy_costs"] - split["sell_costs"])
+
+
+def test_consolidation_fill_cannot_exceed_entry_reservation() -> None:
+    sessions = _sessions(5)
+    panel = _panel(
+        sessions,
+        opens={sessions[1]: 1_000},
+        factors={sessions[0]: 0.1, sessions[1]: 0.01},
+        prev_closes={sessions[1]: 100},
+        prev_close_factors={sessions[1]: 0.1},
+    )
+    trade = _run(panel, sessions).trades.iloc[0]
+    assert trade["qty"] == 0
+    assert trade["exit_reason"] == "entry_miss"
+    assert "over_reservation" in trade["flags"]
+
+
+def test_split_down_fill_within_reservation_still_fills() -> None:
+    sessions = _sessions(5)
+    panel = _panel(
+        sessions,
+        opens={sessions[1]: 50},
+        factors={sessions[0]: 0.5, sessions[1]: 1.0},
+        prev_closes={sessions[1]: 100},
+        prev_close_factors={sessions[1]: 0.5},
+    )
+    trade = _run(panel, sessions).trades.iloc[0]
+    assert trade["qty"] > 0
+    assert trade["entry_price"] == 50
+
+
+def test_backtest_rejects_holdout_sessions_and_panel_dates() -> None:
+    sessions = _sessions(5)
+    panel = _panel(sessions)
+    holdout = date(2025, 10, 1)
+    with pytest.raises(ValueError, match="sealed holdout"):
+        run_backtest(
+            panel, [*sessions, holdout], _candidate,
+            capital=10_000, first_signal=sessions[0], last_session=sessions[-1],
+        )
+    with pytest.raises(ValueError, match="sealed holdout"):
+        run_backtest(
+            panel, sessions, _candidate,
+            capital=10_000, first_signal=sessions[0], last_session=holdout,
+        )
+    with pytest.raises(ValueError, match="sealed holdout"):
+        run_backtest(
+            pd.concat([panel, _panel([holdout])], ignore_index=True),
+            sessions, _candidate, capital=10_000, first_signal=sessions[0], last_session=sessions[-1],
+        )
+
+
+def test_terminal_missing_exit_is_settled_into_final_equity() -> None:
+    sessions = _sessions(5)
+    panel = _panel(sessions, omit={sessions[4]})
+    result = _run(panel, sessions)
+    trade = result.trades.iloc[0]
+    assert trade["exit_session"] == sessions[-1]
+    assert trade["exit_reason"] == "no_exit_data"
+    filled_pnl = result.trades.loc[result.trades["qty"] > 0, "net_pnl"].sum()
+    assert filled_pnl == pytest.approx(result.equity.iloc[-1]["equity"] - 10_000, abs=1e-6)
+
+
+def test_filled_trade_pnl_sums_to_final_equity_change() -> None:
+    sessions = _sessions(5)
+    panel = pd.concat([_panel(sessions), _panel(sessions)], ignore_index=True)
+    panel.loc[panel.index >= len(sessions), "security_id"] = "B"
+
+    def candidates(as_of: date) -> list[Candidate]:
+        """Return two ranked securities on the first signal session."""
+        return [Candidate("A", 2.0, "test"), Candidate("B", 1.0, "test")] if as_of == sessions[0] else []
+
+    result = run_backtest(panel, sessions, candidates, capital=10_000, first_signal=sessions[0], last_session=sessions[-1])
+    filled = result.trades[result.trades["qty"] > 0]
+    assert len(filled) == 2
+    assert filled["net_pnl"].sum() == pytest.approx(result.equity.iloc[-1]["equity"] - 10_000, abs=1e-6)
