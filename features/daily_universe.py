@@ -65,6 +65,7 @@ def build_cohort(
     window: int = WINDOW,
     min_obs: int = MIN_OBS,
     first_month: str = FIRST_MONTH,
+    ledger_end: date | None = None,
 ) -> Cohort:
     """Rank each month's ids on the window before it, drop funds and unproven ids, keep the top."""
     identity = _identity(panel, renames)
@@ -75,7 +76,8 @@ def build_cohort(
     member_rows: list[dict[str, object]] = []
     drop_rows: list[dict[str, object]] = []
     month_rows: list[dict[str, object]] = []
-    for label, rank_idx in _month_ranks(sessions, panel_end, first_month):
+    ledger_end = ledger_end or sessions[-1]
+    for label, rank_idx in _month_ranks(sessions, panel_end, first_month, ledger_end):
         rank_session = sessions[rank_idx]
         ranking = _rank(traded, rank_idx, window, min_obs)
         ranking["fund_class"] = ranking["security_id"].map(classes)
@@ -215,7 +217,7 @@ def _traded_matrix(panel: pd.DataFrame, sessions: list[date]) -> pd.DataFrame:
     return daily.unstack("security_id").reindex(sessions)
 
 
-def _month_ranks(sessions: list[date], panel_end: date, first_month: str) -> list[tuple[str, int]]:
+def _month_ranks(sessions: list[date], panel_end: date, first_month: str, ledger_end: date) -> list[tuple[str, int]]:
     """Complete months from first_month, each with the index of the session before its first one."""
     first_index: dict[str, int] = {}
     for i, session in enumerate(sessions):
@@ -224,8 +226,8 @@ def _month_ranks(sessions: list[date], panel_end: date, first_month: str) -> lis
     for label, i in first_index.items():
         year, month = (int(part) for part in label.split("-"))
         month_end = date(year, month, calendar.monthrange(year, month)[1])
-        # A month is complete once the panel reaches its last calendar day.
-        if label >= first_month and i > 0 and month_end <= panel_end:
+        last_expected = max(session for session in sessions if session.strftime("%Y-%m") == label)
+        if label >= first_month and i > 0 and last_expected <= panel_end and month_end <= ledger_end:
             plan.append((label, i - 1))
     return plan
 

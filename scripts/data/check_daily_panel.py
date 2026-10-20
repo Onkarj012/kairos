@@ -222,7 +222,7 @@ def _adjustments(paths: dict[str, Path]) -> Section:
         + "\nMove review:\n\n"
         + _table(list(moves.columns), moves.values.tolist())
     )
-    status = "review" if len(purposes) or len(moves) else "pass"
+    status = "review" if corporate_actions["run_status"] == "aborted" or len(failures) or len(purposes) or len(moves) else "pass"
     return Section("adjustments", "Adjustment review", status, data, body)
 
 

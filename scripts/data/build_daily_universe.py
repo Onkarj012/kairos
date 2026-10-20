@@ -52,6 +52,11 @@ def _ledger_sessions(path: Path) -> list[date]:
     return sorted(s for s in sessions if s >= START)
 
 
+def _ledger_coverage_end(path: Path) -> date:
+    """Last calendar date covered by the session ledger."""
+    return max(date.fromisoformat(row["session_date"]) for row in map(json.loads, path.read_text(encoding="utf-8").splitlines()))
+
+
 def _write_outputs(out_dir: Path, cohort: Cohort, hashes: dict[str, str]) -> None:
     """Write every output into a staging dir beside out_dir, then swap it into place."""
     out_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -79,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         _ledger_sessions(root / LEDGER),
         pd.read_csv(renames_path, dtype={"old": str, "new": str, "linked": bool}, keep_default_na=False),
         pd.read_csv(root / FUNDS, dtype={"symbol": str}, keep_default_na=False),
+        ledger_end=_ledger_coverage_end(root / LEDGER),
     )
     hashes = {
         "panel_sha256": _sha256(panel_path),

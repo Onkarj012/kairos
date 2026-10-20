@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from ingest.daily_panel import build_panel, parse_body, replace_directory
+from scripts.data.check_daily_panel import _adjustments
 
 SESSION = date(2022, 8, 8)
 NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
@@ -137,3 +138,35 @@ def test_replace_directory_restores_previous_output_when_swap_fails(tmp_path: Pa
     assert (out_dir / "new.txt").read_text(encoding="utf-8") == "new"
     assert not (out_dir / "old.txt").exists()
     assert not (tmp_path / ".out.retired").exists()
+
+
+def test_adjustment_status_reviews_aborted_fetch_and_failures(tmp_path: Path) -> None:
+    """An aborted corporate-action run or a failed symbol keeps adjustment status at review."""
+    import csv
+
+    def write_csv(name: str, columns: list[str], rows: list[list[str]]) -> None:
+        """Write a small CSV fixture for the adjustment section."""
+        with (tmp_path / name).open("w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(columns)
+            writer.writerows(rows)
+
+    write_csv("events.csv", ["kind", "nse_prev_close_adjusted"], [])
+    write_csv("purposes.csv", ["reason"], [])
+    write_csv("moves.csv", ["reason"], [])
+    write_csv("failures.csv", ["symbol"], [])
+    (tmp_path / "summary.json").write_text(json.dumps({"tdpowersys_2026_08_24_adjusted_r": 0.0}), encoding="utf-8")
+    (tmp_path / "manifest.json").write_text(json.dumps({"run_status": "aborted"}), encoding="utf-8")
+    paths = {
+        "events": tmp_path / "events.csv",
+        "review_purposes": tmp_path / "purposes.csv",
+        "review_moves": tmp_path / "moves.csv",
+        "adjustments_summary": tmp_path / "summary.json",
+        "corporate_actions_manifest": tmp_path / "manifest.json",
+        "failures": tmp_path / "failures.csv",
+    }
+
+    assert _adjustments(paths).status == "review"
+    write_csv("failures.csv", ["symbol"], [["FAILED"]])
+    (tmp_path / "manifest.json").write_text(json.dumps({"run_status": "finished"}), encoding="utf-8")
+    assert _adjustments(paths).status == "review"

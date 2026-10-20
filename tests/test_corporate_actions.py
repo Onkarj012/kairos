@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from scripts.data import fetch_nse_corporate_actions as ca_collector
+from scripts.data import fetch_cohort_corporate_actions as cohort_collector
 
 from contracts.corporate_actions import (
     CORPORATE_ACTION_SCHEMA,
@@ -187,6 +188,17 @@ def test_distinct_report_root_is_rejected_before_network_or_write(tmp_path: Path
         ca_collector.acquire(output_root=output, report_root=tmp_path / "report")
     assert not output.exists()
     assert not (tmp_path / "report").exists()
+
+
+def test_fetch_output_guard_allows_repo_derived_data_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The documented data directory is allowed while other repo paths stay blocked."""
+    repo = tmp_path / "repo"
+    (repo / "derived_data").mkdir(parents=True)
+    monkeypatch.setattr(cohort_collector, "REPO_ROOT", repo)
+
+    cohort_collector._validate_output_root(repo / "derived_data" / "corporate-actions")
+    with pytest.raises(ValueError, match="outside the git tree"):
+        cohort_collector._validate_output_root(repo / "scratch-output")
 
 
 def test_acquire_cli_defaults_to_self_contained_report() -> None:

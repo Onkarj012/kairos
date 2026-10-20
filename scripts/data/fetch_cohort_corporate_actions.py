@@ -306,14 +306,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _validate_output_root(output_root: Path) -> None:
+    """Allow the documented derived-data directory and reject other paths inside the repo."""
+    resolved = output_root.resolve()
+    repo_root = REPO_ROOT.resolve()
+    derived_data = (repo_root / "derived_data").resolve()
+    if resolved == derived_data or derived_data in resolved.parents:
+        return
+    if resolved == repo_root or repo_root in resolved.parents:
+        raise ValueError(f"output root must be outside the git tree unless under derived_data: {output_root}")
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the cohort fetch and print the manifest request accounting."""
     args = parse_args(argv)
     root = derived_root()
     members_path = args.members or root / "daily-runner" / "cohort-v1" / "ever_members.csv"
     output_root = args.output_root or root / "daily-runner" / "corporate-actions-v1"
-    if REPO_ROOT in output_root.resolve().parents or output_root.resolve() == REPO_ROOT:
-        raise ValueError(f"output root must be outside the git tree: {output_root}")
+    _validate_output_root(output_root)
     if output_root.exists() and not args.resume:
         raise FileExistsError(f"output root exists; pass --resume to continue: {output_root}")
     manifest = fetch(members=_load_members(members_path), output_root=output_root, resume=args.resume, timeout=args.timeout)

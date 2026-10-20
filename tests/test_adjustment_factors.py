@@ -5,7 +5,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from ingest.adjustment_factors import adjusted_return, build_events, factors_frame, parse_purpose
+from ingest.adjustment_factors import _on_day_hints, adjusted_return, build_events, factors_frame, parse_purpose
 from ingest.daily_panel import apply_factors
 
 RE_SPLIT_SUBJECT = "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share"
@@ -30,6 +30,79 @@ def test_parse_purpose_reads_split_and_bonus_ratios() -> None:
     events, review = build_events(observations, panel)
     assert events.empty
     assert list(review["reason"]) == ["unparsed_purpose"]
+
+
+def test_undated_actions_are_reviewed_and_excluded_from_event_and_hint_joins() -> None:
+    """Undated actions go to review and never reach merge_asof."""
+    observations = pd.DataFrame(
+        [{"security_id": "UND", "symbol": "UND", "ex_date": None, "subject": "Bonus 1:1", "action_type_hint": "bonus"}]
+    )
+    panel = pd.DataFrame(_panel("UND", [10.0] * 4, [10.0] * 4))
+
+    events, review = build_events(observations, panel)
+
+    assert events.empty
+    assert review[["security_id", "reason"]].values.tolist() == [["UND", "missing_ex_date"]]
+    assert _on_day_hints(observations, panel) == {}
+
+
+def test_cancelled_and_conflicting_actions_go_to_review_but_repeats_and_kinds_apply() -> None:
+    """Cancelled and conflicting ratios are withheld while duplicate and distinct same-day kinds behave as before."""
+    observations = pd.DataFrame(
+        [
+            {"security_id": "CANCEL", "symbol": "CANCEL", "ex_date": "2024-01-02", "subject": "Bonus 1:1 - Cancelled", "revision_status": "cancelled"},
+            {"security_id": "CONFLICT", "symbol": "CONFLICT", "ex_date": "2024-01-02", "subject": "Bonus 1:1", "revision_status": "original_or_unspecified"},
+            {"security_id": "CONFLICT", "symbol": "CONFLICT", "ex_date": "2024-01-02", "subject": "Bonus 2:1", "revision_status": "original_or_unspecified"},
+            {"security_id": "OK", "symbol": "OK", "ex_date": "2024-01-02", "subject": "Bonus 1:1", "revision_status": "original_or_unspecified"},
+            {"security_id": "OK", "symbol": "OK", "ex_date": "2024-01-02", "subject": "Bonus 1:1", "revision_status": "original_or_unspecified"},
+            {"security_id": "OK", "symbol": "OK", "ex_date": "2024-01-02", "subject": SPLIT_SUBJECT, "revision_status": "original_or_unspecified"},
+        ]
+    )
+    panel = pd.concat([pd.DataFrame(_panel(sid, [10.0, 10.0, 5.0, 5.0], [9.0, 10.0, 10.0, 5.0])) for sid in ("CANCEL", "CONFLICT", "OK")])
+
+    events, review = build_events(observations, panel)
+
+    assert events[["security_id", "kind"]].values.tolist() == [["OK", "bonus"], ["OK", "split"]]
+    assert events.loc[events["kind"] == "bonus", "factor"].tolist() == [0.5]
+    assert review[["security_id", "reason"]].values.tolist() == [
+        ["CANCEL", "cancelled_action"],
+        ["CONFLICT", "conflicting_factors"],
+        ["CONFLICT", "conflicting_factors"],
+    ]
+
+
+def test_ambiguous_factors_are_refused_and_adjustment_build_writes_review(tmp_path, monkeypatch) -> None:
+    """Panel factors refuse ambiguity while the adjustment CLI still writes the reviewable event."""
+    from argparse import Namespace
+
+    from scripts.data import build_adjustment_factors
+
+    panel = pd.DataFrame(_panel("AMB", [10.0, 10.0, 7.0, 7.0], [9.0, 10.0, 8.0, 7.0]))
+    observations = pd.DataFrame(
+        [{"security_id": "AMB", "symbol": "AMB", "ex_date": "2024-01-03", "subject": "Bonus 1:1", "action_type_hint": "bonus"}]
+    )
+    events, review = build_events(observations, panel)
+    with pytest.raises(ValueError, match="security_id AMB.*2024-01-03"):
+        factors_frame(events)
+
+    panel_path = tmp_path / "panel.parquet"
+    cohort_path = tmp_path / "cohort.parquet"
+    ledger_path = tmp_path / "sessions.jsonl"
+    actions_dir = tmp_path / "actions"
+    out = tmp_path / "out"
+    panel.assign(series="EQ").to_parquet(panel_path, index=False)
+    pd.DataFrame(columns=["security_id", "month"]).to_parquet(cohort_path, index=False)
+    ledger_path.write_text("{}\n", encoding="utf-8")
+    actions_dir.mkdir()
+    (actions_dir / "observations.jsonl").write_text("[]\n", encoding="utf-8")
+    args = Namespace(panel=panel_path, corporate_actions=actions_dir, cohort=cohort_path, ledger=ledger_path, out=out)
+    monkeypatch.setattr(build_adjustment_factors, "_parser", lambda: Namespace(parse_args=lambda argv: args))
+    monkeypatch.setattr(build_adjustment_factors, "read_corporate_actions", lambda _: observations)
+    monkeypatch.setattr(build_adjustment_factors, "_expected_window", lambda _: DAYS)
+
+    assert build_adjustment_factors.main([]) == 0
+    assert pd.read_csv(out / "events.csv")["nse_prev_close_adjusted"].tolist() == ["ambiguous"]
+    assert pd.read_csv(out / "review_purposes.csv")["reason"].tolist() == ["ambiguous_prev_close"]
 
 
 def _panel(security_id: str, closes: list[float], prev_closes: list[float]) -> list[dict[str, object]]:

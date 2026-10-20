@@ -85,7 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     panel = pd.read_parquet(args.panel)
     observations = read_corporate_actions(args.corporate_actions)
     events, review = build_events(observations, panel)
-    adjusted = apply_factors(panel, factors_frame(events))
+    panel_events = events.loc[events["nse_prev_close_adjusted"] != "ambiguous"]
+    adjusted = apply_factors(panel, factors_frame(panel_events))
     cohort = pd.read_parquet(args.cohort)
     moves = review_moves(adjusted, cohort, observations, events, _expected_window(args.ledger))
     input_sha256 = {

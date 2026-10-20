@@ -1,9 +1,11 @@
 """Offline check of the cohort rules on tiny synthetic frames with known answers."""
 from __future__ import annotations
 
+from datetime import date
+
 import pandas as pd
 
-from features.daily_universe import build_cohort
+from features.daily_universe import _month_ranks, build_cohort
 
 # Weekdays from 2019-10-01 to 2020-01-31: 66 sessions in 2019, so 2020-01 starts at index 66 and ranks on index 65.
 SESSIONS = [ts.date() for ts in pd.bdate_range("2019-10-01", "2020-01-31")]
@@ -102,3 +104,10 @@ def test_unproven_id_is_dropped_and_placeholder_side_is_not() -> None:
     ]
     assert cohort.summary["identity"]["unproven_ids"] == 3
     assert cohort.summary["ever_members_with_unproven_rename"] == 0
+
+
+def test_month_closes_on_last_expected_session_when_ledger_covers_weekend_end() -> None:
+    """A Friday panel end completes the month when the ledger reaches the Sunday calendar end."""
+    sessions = [date(2024, 5, 31), date(2024, 6, 3), date(2024, 6, 27), date(2024, 6, 28)]
+
+    assert _month_ranks(sessions, date(2024, 6, 28), "2024-06", date(2024, 6, 30)) == [("2024-06", 0)]

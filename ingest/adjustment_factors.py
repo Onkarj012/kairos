@@ -99,19 +99,31 @@ def _prev_close_state(c0: float, pc: float, factor: float) -> str:
 
 
 def _parsed_actions(observations: pd.DataFrame) -> pd.DataFrame:
-    """Observations whose subject parses to a price factor; repeats of one action collapse, a split and a bonus on the same day do not."""
+    """Parsed dated actions, with repeats collapsed and conflicting or cancelled actions removed."""
     rows = []
     for o in observations.itertuples(index=False):
         purpose = parse_purpose(o.subject)
         if purpose is not None:
-            rows.append({"security_id": o.security_id, "symbol": o.symbol, "ex_date": o.ex_date, "subject": o.subject, "kind": purpose.kind, "factor": purpose.factor})
-    actions = pd.DataFrame(rows, columns=["security_id", "symbol", "ex_date", "subject", "kind", "factor"])
-    return actions.drop_duplicates(["security_id", "ex_date", "kind", "factor"]).sort_values(["security_id", "ex_date", "kind", "factor"], ignore_index=True)
+            rows.append({"security_id": o.security_id, "symbol": o.symbol, "ex_date": o.ex_date, "subject": o.subject, "kind": purpose.kind, "factor": purpose.factor, "revision_status": getattr(o, "revision_status", "original_or_unspecified")})
+    return pd.DataFrame(rows, columns=["security_id", "symbol", "ex_date", "subject", "kind", "factor", "revision_status"])
 
 
 def build_events(observations: pd.DataFrame, panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Split and bonus events on their panel ex-sessions, and the rows a person must review."""
     actions = _parsed_actions(observations)
+    valid_date = pd.to_datetime(actions["ex_date"], errors="coerce").notna()
+    cancelled = actions.loc[valid_date & actions["revision_status"].eq("cancelled"), ["security_id", "symbol", "ex_date", "subject"]].assign(reason="cancelled_action")
+    eligible = actions.loc[valid_date & actions["revision_status"].ne("cancelled")].copy()
+    conflict_keys = eligible.groupby(["security_id", "ex_date", "kind"])["factor"].nunique()
+    conflict_keys = set(conflict_keys[conflict_keys > 1].index)
+    conflicting = eligible.loc[
+        eligible.set_index(["security_id", "ex_date", "kind"]).index.isin(conflict_keys),
+        ["security_id", "symbol", "ex_date", "subject"],
+    ].assign(reason="conflicting_factors")
+    actions = eligible.loc[~eligible.set_index(["security_id", "ex_date", "kind"]).index.isin(conflict_keys)]
+    actions = actions.drop_duplicates(["security_id", "ex_date", "kind", "factor"]).sort_values(
+        ["security_id", "ex_date", "kind", "factor"], ignore_index=True
+    )
     actions = actions.join(_map_to_panel(actions, panel))
     total = actions.groupby(["security_id", "ex_session"])["factor"].transform("prod")
     states = [_prev_close_state(c0, pc, factor) for c0, pc, factor in zip(actions["c0"], actions["pc"], total)]
@@ -119,16 +131,22 @@ def build_events(observations: pd.DataFrame, panel: pd.DataFrame) -> tuple[pd.Da
     mapped = actions["ex_session"].notna()
     events = actions.loc[mapped, EVENT_COLUMNS].reset_index(drop=True)
 
+    observation_dates = pd.to_datetime(observations["ex_date"], errors="coerce").notna()
+    missing_observation_date = observations.loc[~observation_dates, ["security_id", "symbol", "ex_date", "subject"]].assign(reason="missing_ex_date")
     unparsed_subject = observations["subject"].map(lambda subject: parse_purpose(subject) is None and re.search(ACTION_WORDS, subject, re.IGNORECASE) is not None)
-    unparsed = observations.loc[unparsed_subject, ["security_id", "symbol", "ex_date", "subject"]].assign(reason="unparsed_purpose")
+    unparsed = observations.loc[observation_dates & unparsed_subject, ["security_id", "symbol", "ex_date", "subject"]].assign(reason="unparsed_purpose")
     unmapped = actions.loc[~mapped, ["security_id", "symbol", "ex_date", "subject"]].assign(reason="no_panel_session_on_or_after_ex_date")
     ambiguous = events.loc[events["nse_prev_close_adjusted"] == "ambiguous", ["security_id", "symbol", "ex_date", "subject"]].assign(reason="ambiguous_prev_close")
-    review = pd.concat([unparsed, unmapped, ambiguous], ignore_index=True)[REVIEW_COLUMNS]
+    review = pd.concat([missing_observation_date, cancelled, conflicting, unparsed, unmapped, ambiguous], ignore_index=True)[REVIEW_COLUMNS]
     return events, review.sort_values(["reason", "security_id", "ex_date"], ignore_index=True)
 
 
 def factors_frame(events: pd.DataFrame) -> pd.DataFrame:
-    """Events as the panel builder reads them; an ambiguous prev_close counts as not adjusted."""
+    """Events as the panel builder reads them, refusing factors with ambiguous prev_close state."""
+    ambiguous = events.loc[events["nse_prev_close_adjusted"] == "ambiguous"]
+    if not ambiguous.empty:
+        event = ambiguous.iloc[0]
+        raise ValueError(f"ambiguous adjustment for security_id {event['security_id']} at ex_session {event['ex_session']}")
     return pd.DataFrame(
         {
             "security_id": events["security_id"],
@@ -158,9 +176,10 @@ def adjusted_return(panel: pd.DataFrame) -> pd.Series:
 
 def _on_day_hints(observations: pd.DataFrame, panel: pd.DataFrame) -> dict[tuple[str, date], str]:
     """First non-split/bonus observation hint per security and ex-session."""
-    sessions = _map_to_panel(observations, panel)["ex_session"]
+    dated = observations.loc[pd.to_datetime(observations["ex_date"], errors="coerce").notna()]
+    sessions = _map_to_panel(dated, panel)["ex_session"]
     hints: dict[tuple[str, date], str] = {}
-    for security_id, session, hint in zip(observations["security_id"], sessions, observations["action_type_hint"]):
+    for security_id, session, hint in zip(dated["security_id"], sessions, dated["action_type_hint"]):
         if hint not in ("split", "bonus") and pd.notna(session):
             hints.setdefault((security_id, session), hint)
     return hints
