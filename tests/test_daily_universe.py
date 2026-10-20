@@ -111,3 +111,8 @@ def test_month_closes_on_last_expected_session_when_ledger_covers_weekend_end() 
     sessions = [date(2024, 5, 31), date(2024, 6, 3), date(2024, 6, 27), date(2024, 6, 28)]
 
     assert _month_ranks(sessions, date(2024, 6, 28), "2024-06", date(2024, 6, 30)) == [("2024-06", 0)]
+
+    october_sessions = [date(2026, 9, 30), date(2026, 10, 1), date(2026, 10, 30)]
+    assert _month_ranks(october_sessions, date(2026, 10, 30), "2026-10", date(2026, 10, 30)) == [("2026-10", 0)]
+    july_sessions = [date(2026, 6, 30), date(2026, 7, 1), date(2026, 7, 31)]
+    assert _month_ranks(july_sessions, date(2026, 7, 31), "2026-07", date(2026, 7, 30)) == []

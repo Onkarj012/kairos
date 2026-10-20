@@ -112,8 +112,14 @@ def build_events(observations: pd.DataFrame, panel: pd.DataFrame) -> tuple[pd.Da
     """Split and bonus events on their panel ex-sessions, and the rows a person must review."""
     actions = _parsed_actions(observations)
     valid_date = pd.to_datetime(actions["ex_date"], errors="coerce").notna()
-    cancelled = actions.loc[valid_date & actions["revision_status"].eq("cancelled"), ["security_id", "symbol", "ex_date", "subject"]].assign(reason="cancelled_action")
+    cancelled_actions = actions.loc[actions["revision_status"].eq("cancelled")]
+    cancelled_keys = set(zip(cancelled_actions["security_id"], cancelled_actions["kind"], cancelled_actions["factor"]))
+    withheld = actions.loc[
+        actions.set_index(["security_id", "kind", "factor"]).index.isin(cancelled_keys)
+    ]
+    cancelled = withheld.loc[valid_date.loc[withheld.index], ["security_id", "symbol", "ex_date", "subject"]].assign(reason="cancelled_action")
     eligible = actions.loc[valid_date & actions["revision_status"].ne("cancelled")].copy()
+    eligible = eligible.loc[~eligible.set_index(["security_id", "kind", "factor"]).index.isin(cancelled_keys)]
     conflict_keys = eligible.groupby(["security_id", "ex_date", "kind"])["factor"].nunique()
     conflict_keys = set(conflict_keys[conflict_keys > 1].index)
     conflicting = eligible.loc[

@@ -50,6 +50,7 @@ def test_cancelled_and_conflicting_actions_go_to_review_but_repeats_and_kinds_ap
     """Cancelled and conflicting ratios are withheld while duplicate and distinct same-day kinds behave as before."""
     observations = pd.DataFrame(
         [
+            {"security_id": "CANCEL", "symbol": "CANCEL", "ex_date": "2024-01-01", "subject": "Bonus 1:1", "revision_status": "original_or_unspecified"},
             {"security_id": "CANCEL", "symbol": "CANCEL", "ex_date": "2024-01-02", "subject": "Bonus 1:1 - Cancelled", "revision_status": "cancelled"},
             {"security_id": "CONFLICT", "symbol": "CONFLICT", "ex_date": "2024-01-02", "subject": "Bonus 1:1", "revision_status": "original_or_unspecified"},
             {"security_id": "CONFLICT", "symbol": "CONFLICT", "ex_date": "2024-01-02", "subject": "Bonus 2:1", "revision_status": "original_or_unspecified"},
@@ -65,6 +66,7 @@ def test_cancelled_and_conflicting_actions_go_to_review_but_repeats_and_kinds_ap
     assert events[["security_id", "kind"]].values.tolist() == [["OK", "bonus"], ["OK", "split"]]
     assert events.loc[events["kind"] == "bonus", "factor"].tolist() == [0.5]
     assert review[["security_id", "reason"]].values.tolist() == [
+        ["CANCEL", "cancelled_action"],
         ["CANCEL", "cancelled_action"],
         ["CONFLICT", "conflicting_factors"],
         ["CONFLICT", "conflicting_factors"],
@@ -103,6 +105,7 @@ def test_ambiguous_factors_are_refused_and_adjustment_build_writes_review(tmp_pa
     assert build_adjustment_factors.main([]) == 0
     assert pd.read_csv(out / "events.csv")["nse_prev_close_adjusted"].tolist() == ["ambiguous"]
     assert pd.read_csv(out / "review_purposes.csv")["reason"].tolist() == ["ambiguous_prev_close"]
+    assert pd.read_json(out / "summary.json")["events_applied"].iloc[0] == 0
 
 
 def _panel(security_id: str, closes: list[float], prev_closes: list[float]) -> list[dict[str, object]]:

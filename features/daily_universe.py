@@ -4,7 +4,7 @@ from __future__ import annotations
 import calendar
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import pandas as pd
@@ -227,7 +227,11 @@ def _month_ranks(sessions: list[date], panel_end: date, first_month: str, ledger
         year, month = (int(part) for part in label.split("-"))
         month_end = date(year, month, calendar.monthrange(year, month)[1])
         last_expected = max(session for session in sessions if session.strftime("%Y-%m") == label)
-        if label >= first_month and i > 0 and last_expected <= panel_end and month_end <= ledger_end:
+        ledger_tail_is_weekend = all(
+            (ledger_end + timedelta(days=offset)).weekday() >= 5
+            for offset in range(1, (month_end - ledger_end).days + 1)
+        )
+        if label >= first_month and i > 0 and last_expected <= panel_end and ledger_tail_is_weekend:
             plan.append((label, i - 1))
     return plan
 

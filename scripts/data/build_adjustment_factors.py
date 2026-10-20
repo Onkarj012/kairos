@@ -50,11 +50,11 @@ def _counts(values: pd.Series) -> dict[str, int]:
     return {str(key): int(count) for key, count in values.value_counts().sort_index().items()}
 
 
-def _summary(events: pd.DataFrame, review: pd.DataFrame, moves: pd.DataFrame, adjusted: pd.DataFrame, input_sha256: dict[str, str]) -> dict[str, Any]:
+def _summary(events: pd.DataFrame, panel_events: pd.DataFrame, review: pd.DataFrame, moves: pd.DataFrame, adjusted: pd.DataFrame, input_sha256: dict[str, str]) -> dict[str, Any]:
     """Counts and checks for summary.json."""
     check = adjusted.loc[(adjusted["symbol"] == MOVE_CHECK_SYMBOL) & (adjusted["session_date"] == MOVE_CHECK_SESSION)]
     return {
-        "events_applied": len(events),
+        "events_applied": len(panel_events),
         "events_by_kind": _counts(events["kind"]),
         "prev_close_adjusted": _counts(events["nse_prev_close_adjusted"]),
         "review_purposes": _counts(review["reason"]),
@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         "ledger": file_sha256(args.ledger),
         "panel": file_sha256(args.panel),
     }
-    summary = _summary(events, review, moves, adjusted, input_sha256)
+    summary = _summary(events, panel_events, review, moves, adjusted, input_sha256)
     _write(args.out, {EVENTS_FILE: events, REVIEW_PURPOSES_FILE: review, REVIEW_MOVES_FILE: moves, SUMMARY_FILE: summary})
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0
