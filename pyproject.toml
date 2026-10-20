@@ -1,0 +1,23 @@
+[project]
+name = "kairos"
+version = "0.1.0"
+description = "Evidence-gated daily swing system for NSE cash equities"
+requires-python = ">=3.11"
+dependencies = [
+  "pandas",
+  "numpy",
+  "pyarrow",
+  "fastapi",
+  "pydantic",
+  "uvicorn",
+]
+
+[project.optional-dependencies]
+kite = ["kiteconnect>=5.1.0"]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

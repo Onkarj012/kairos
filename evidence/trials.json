@@ -1,0 +1,11 @@
+{
+  "schema": "kairos.trials.v1",
+  "purpose": "Global count of strategy configurations declared before Kairos. Deflated-Sharpe gates add new trials on top of global_k; never reset it.",
+  "global_k": 106,
+  "lanes": [
+    {"lane": "sleeve-f-c1", "declared_k_end": 95, "executed_outcomes": 95, "status": "walk-forward run"},
+    {"lane": "sleeve-f-c2", "declared_k_end": 101, "executed_outcomes": 0, "status": "superseded before outcomes"},
+    {"lane": "sleeve-f-c3", "declared_k_end": 106, "executed_outcomes": 0, "status": "killed at D4 before outcomes"},
+    {"lane": "intraday-pred-v1, intraday-pred-v1_1-smooth", "declared_k_end": null, "executed_outcomes": null, "status": "registrations record no k; count not yet ruled"}
+  ]
+}
