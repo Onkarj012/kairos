@@ -13,7 +13,7 @@ from pathlib import Path
 import re
 import sys
 import stat
-from typing import Any, Mapping
+from typing import Any, Collection, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -67,9 +67,7 @@ def _safe_name(value: str) -> str:
 
 
 def _canonical_symbol_value(symbol: str) -> str:
-    if symbol == "M&M":
-        return "M%26M"
-    return symbol
+    return symbol.replace("&", "%26")
 
 
 def _file_entry(name: str, payload: bytes, media_type: str) -> dict[str, Any]:
@@ -95,7 +93,7 @@ def _parse_day(value: object) -> date | None:
         return None
 
 
-def _validate_url(url: str, *, allow_pagination_probe: bool = False) -> str:
+def _validate_url(url: str, *, allow_pagination_probe: bool = False, symbols: Collection[str] = COHORT) -> str:
     """Validate one canonical request or response URL before trusting it."""
     if not isinstance(url, str) or url != url.strip() or not url.isascii():
         raise ValueError(f"URL is not canonical ASCII HTTPS: {url}")
@@ -123,8 +121,8 @@ def _validate_url(url: str, *, allow_pagination_probe: bool = False) -> str:
     if values.get("index") != "equities" or values.get("series") != "EQ":
         raise ValueError(f"query has unsupported fixed values: {url}")
     encoded_symbol = values.get("symbol", "")
-    symbol = "M&M" if encoded_symbol == "M%26M" else encoded_symbol
-    if symbol not in COHORT or symbol != symbol.upper() or not re.fullmatch(r"[A-Z0-9&-]+", symbol) or encoded_symbol != _canonical_symbol_value(symbol):
+    symbol = encoded_symbol.replace("%26", "&")
+    if symbol not in symbols or symbol != symbol.upper() or not re.fullmatch(r"[A-Z0-9&-]+", symbol) or encoded_symbol != _canonical_symbol_value(symbol):
         raise ValueError(f"query has unsupported symbol serialization: {url}")
     date_keys = {"from_date", "to_date"}
     if bool(date_keys & values.keys()) != bool(date_keys <= values.keys()):
@@ -147,15 +145,15 @@ def _in_range(value: object, start: date = START_DATE, end: date = END_DATE) -> 
     return parsed is not None and start <= parsed <= end
 
 
-def _query_url(symbol: str, start: date, end: date, **extra: str) -> str:
+def _query_url(symbol: str, start: date, end: date, *, symbols: Collection[str] = COHORT, **extra: str) -> str:
     query = f"index=equities&symbol={_canonical_symbol_value(symbol)}&series=EQ&from_date={start:%d-%m-%Y}&to_date={end:%d-%m-%Y}"
     if extra:
         query += "&" + "&".join(f"{key}={value}" for key, value in extra.items())
-    return _validate_url(f"{API_BASE}?{query}", allow_pagination_probe=bool(extra))
+    return _validate_url(f"{API_BASE}?{query}", allow_pagination_probe=bool(extra), symbols=symbols)
 
 
-def _request(url: str, *, accept: str, timeout: float = 30.0, allow_pagination_probe: bool = False) -> dict[str, Any]:
-    _validate_url(url, allow_pagination_probe=allow_pagination_probe)
+def _request(url: str, *, accept: str, timeout: float = 30.0, allow_pagination_probe: bool = False, symbols: Collection[str] = COHORT) -> dict[str, Any]:
+    _validate_url(url, allow_pagination_probe=allow_pagination_probe, symbols=symbols)
     retrieved_at = _now()
     request = Request(url, headers={"Accept": accept, "Accept-Encoding": "identity", "User-Agent": "Kairos/2.0"})
     try:
@@ -178,17 +176,17 @@ def _json_array(body: bytes) -> tuple[bool, list[Any]]:
     return isinstance(value, list), value if isinstance(value, list) else []
 
 
-def _validate_response(result: Mapping[str, Any], *, expected_url: str, symbol: str, start: date, end: date, allow_pagination_probe: bool = False) -> tuple[bool, list[str], list[Any]]:
+def _validate_response(result: Mapping[str, Any], *, expected_url: str, symbol: str, start: date, end: date, allow_pagination_probe: bool = False, symbols: Collection[str] = COHORT) -> tuple[bool, list[str], list[Any]]:
     reasons: list[str] = []
     try:
-        _validate_url(expected_url, allow_pagination_probe=allow_pagination_probe)
+        _validate_url(expected_url, allow_pagination_probe=allow_pagination_probe, symbols=symbols)
     except ValueError as exc:
         reasons.append(f"requested_url_invalid:{exc}")
     final_url = result.get("final_url")
     try:
         if not isinstance(final_url, str):
             raise ValueError("missing final URL")
-        _validate_url(final_url, allow_pagination_probe=allow_pagination_probe)
+        _validate_url(final_url, allow_pagination_probe=allow_pagination_probe, symbols=symbols)
     except ValueError as exc:
         reasons.append(f"final_url_invalid:{exc}")
     if result.get("status") != 200:
