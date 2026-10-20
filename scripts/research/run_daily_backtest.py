@@ -33,6 +33,14 @@ SESSION_LEDGER = "daily-runner/session-ledger-v1/sessions.jsonl"
 REVIEW_MOVES = "daily-runner/adjustments-v1/review_moves.csv"
 STUDY_ID = "daily-runner-stage1"
 JOB_ID = "dev-folds"
+DISABLED_CHECKS = {
+    check
+    for check, enabled in (
+        ("beats_rung0_baselines_net_sharpe", THRESHOLDS.require_baseline_sharpe_beaten),
+        ("sealed_test_once_passed", THRESHOLDS.require_sealed_test),
+    )
+    if not enabled
+}
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -190,10 +198,12 @@ def _report_strategy(
         lines.append("")
     lines.extend(["### Gate checks at ₹50,000", "", "| Check | Result |", "| --- | --- |"])
     for check, passed in verdict["checks"].items():
-        lines.append(f"| {check} | {'PASS' if passed else 'FAIL'} |")
+        result = "off for baselines" if check in DISABLED_CHECKS else ("PASS" if passed else "FAIL")
+        lines.append(f"| {check} | {result} |")
+    break_even = verdict["break_even_k"] or "none (DSR < 0.95 even at k=1)"
     lines.extend([
         "",
-        f"DSR at k={verdict['k']}: {_fmt(verdict['dsr'], 4)}. Break-even k: {verdict['break_even_k']}.",
+        f"DSR at k={verdict['k']}: {_fmt(verdict['dsr'], 4)}. Break-even k: {break_even}.",
         f"Entry misses: {verdict['entry_misses']}. Exit-band closes: {verdict['exit_band_closes']}.",
         f"Flag counts: `{json.dumps(verdict['flag_counts'], sort_keys=True)}`.",
         f"Review-move trades: {len(review_matches)}.",
