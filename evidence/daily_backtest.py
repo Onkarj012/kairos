@@ -9,6 +9,7 @@ from typing import Callable
 import pandas as pd
 
 from models.daily_baselines import Candidate
+from evidence.sealed_test import assert_dev_only
 from ops.daily_rules import (
     HOLD_SESSIONS,
     EntryPlan,
@@ -52,6 +53,9 @@ def run_backtest(
     last_session: date,
 ) -> BacktestResult:
     """Run ranked daily entries and scheduled exits over official panel prices."""
+    assert_dev_only(sessions)
+    assert_dev_only(panel["session_date"])
+    assert_dev_only([last_session])
     if not sessions:
         return BacktestResult(_trades_frame([]), _equity_frame([]))
     ordered_sessions = list(sessions)
@@ -91,6 +95,19 @@ def run_backtest(
         return float(row[columns[name]])
 
     for session in ordered_sessions[start_index : last_index + 1]:
+        # Rescale held shares before exits so an ex-session sale uses the new quantity.
+        for position in positions:
+            sid = str(position.trade["security_id"])
+            row = rows.get(sid, {}).get(session)
+            if row is None:
+                continue
+            factor = value(row, "adj_factor")
+            if factor and position.last_factor and factor != position.last_factor:
+                position.qty = floor(position.qty * factor / position.last_factor)
+                position.trade["qty"] = position.qty
+                position.trade["flags"] = _add_flag(position.trade["flags"], "qty_rescaled")
+            position.last_factor = factor
+
         # Settle due exits first; absent rows remain pending until the next available open.
         remaining: list[_Position] = []
         for position in positions:
@@ -120,6 +137,21 @@ def run_backtest(
             cash += notional - costs
             _finish_trade(position, session, exit_price, costs, exit_reason)
         positions = remaining
+
+        # Close unresolved positions on the final run date before its equity mark.
+        if session == last_session:
+            terminal: list[_Position] = []
+            for position in positions:
+                sid = str(position.trade["security_id"])
+                if rows.get(sid, {}).get(session) is not None:
+                    terminal.append(position)
+                    continue
+                notional = position.qty * position.last_close
+                costs = sell_costs(notional)
+                cash += notional - costs
+                position.trade["flags"] = _add_flag(position.trade["flags"], "no_exit_data")
+                _finish_trade(position, session, position.last_close, costs, "no_exit_data")
+            positions = terminal
 
         # Settle entries reserved at the previous close and release each reservation.
         for plan, signal_session in scheduled_entries.pop(session, []):
@@ -154,6 +186,11 @@ def run_backtest(
                 continue
             buy_notional = plan.qty * open_price
             buy_charge = buy_costs(buy_notional)
+            if buy_notional + buy_charge > plan.reserved:
+                trade["exit_reason"] = "entry_miss"
+                trade["flags"] = "over_reservation"
+                trades.append(trade)
+                continue
             cash -= buy_notional + buy_charge
             entry_pos = session_index[session]
             due_index = entry_pos + HOLD_SESSIONS
@@ -172,19 +209,12 @@ def run_backtest(
                 )
             )
 
-        # Apply share count changes for corporate actions between available rows.
+        # Update held position marks after entries and exits settle.
         for position in positions:
             sid = str(position.trade["security_id"])
             row = rows.get(sid, {}).get(session)
             if row is None:
                 continue
-            factor = value(row, "adj_factor")
-            if factor and position.last_factor and factor != position.last_factor:
-                # Pre-ex rows carry the smaller factor, so a 2:1 split (0.5 -> 1.0) doubles the shares.
-                position.qty = floor(position.qty * factor / position.last_factor)
-                position.trade["qty"] = position.qty
-                position.trade["flags"] = _add_flag(position.trade["flags"], "qty_rescaled")
-            position.last_factor = factor
             position.last_close = value(row, "close")
             position.last_seen = session
 
@@ -228,13 +258,6 @@ def run_backtest(
                     (plan, session) for plan in plans
                 )
 
-    # Positions with no later exit row close at their last official close.
-    for position in positions:
-        notional = position.qty * position.last_close
-        costs = sell_costs(notional)
-        cash += notional - costs
-        position.trade["flags"] = _add_flag(position.trade["flags"], "no_exit_data")
-        _finish_trade(position, position.last_seen, position.last_close, costs, "no_exit_data")
     return BacktestResult(_trades_frame(trades), _equity_frame(equity_rows))
 
 
