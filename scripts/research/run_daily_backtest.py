@@ -339,7 +339,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
         "## Notes",
         "",
         "- The sector cap is not applied because sector data is unavailable.",
-        "- `worst_fold_floor_bps = 0` requires every fold to be positive, which is stricter than the 70% positive-fold share.",
+        "- `worst_fold_floor_bps = 0` requires every fold mean to be at least 0 bps, which is stricter than the 70% positive-fold share.",
         "- The holdout is sealed. The last development exit is at or before 2025-09-30.",
         "- Costs use the Zerodha delivery profile with 5 bps per side slippage.",
         "",
