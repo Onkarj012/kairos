@@ -50,8 +50,12 @@ def test_cancelled_and_conflicting_actions_go_to_review_but_repeats_and_kinds_ap
     """Cancelled and conflicting ratios are withheld while duplicate and distinct same-day kinds behave as before."""
     observations = pd.DataFrame(
         [
-            {"security_id": "CANCEL", "symbol": "CANCEL", "ex_date": "2024-01-01", "subject": "Bonus 1:1", "revision_status": "original_or_unspecified"},
-            {"security_id": "CANCEL", "symbol": "CANCEL", "ex_date": "2024-01-02", "subject": "Bonus 1:1 - Cancelled", "revision_status": "cancelled"},
+            {"security_id": "CANCEL", "symbol": "CANCEL", "ex_date": "2024-01-01", "record_date": "2023-12-20", "subject": "Bonus 1:1", "revision_status": "original_or_unspecified"},
+            {"security_id": "CANCEL", "symbol": "CANCEL", "ex_date": "2024-01-01", "record_date": "2023-12-21", "subject": "Bonus 1:1 - Cancelled", "revision_status": "cancelled"},
+            {"security_id": "CANCEL", "symbol": "CANCEL", "ex_date": "2024-01-02", "record_date": "2023-12-22", "subject": "Bonus 1:1", "revision_status": "original_or_unspecified"},
+            {"security_id": "CANCEL", "symbol": "CANCEL", "ex_date": "2024-01-03", "record_date": "2023-12-22", "subject": "Bonus 1:1 - Cancelled", "revision_status": "cancelled"},
+            {"security_id": "CANCEL", "symbol": "CANCEL", "ex_date": "2024-01-04", "record_date": "2023-12-23", "subject": "Bonus 1:1", "revision_status": "original_or_unspecified"},
+            {"security_id": "CANCEL", "symbol": "CANCEL", "ex_date": "2024-01-05", "record_date": "2023-12-24", "subject": "Bonus 1:1 - Cancelled", "revision_status": "cancelled"},
             {"security_id": "CONFLICT", "symbol": "CONFLICT", "ex_date": "2024-01-02", "subject": "Bonus 1:1", "revision_status": "original_or_unspecified"},
             {"security_id": "CONFLICT", "symbol": "CONFLICT", "ex_date": "2024-01-02", "subject": "Bonus 2:1", "revision_status": "original_or_unspecified"},
             {"security_id": "OK", "symbol": "OK", "ex_date": "2024-01-02", "subject": "Bonus 1:1", "revision_status": "original_or_unspecified"},
@@ -63,9 +67,12 @@ def test_cancelled_and_conflicting_actions_go_to_review_but_repeats_and_kinds_ap
 
     events, review = build_events(observations, panel)
 
-    assert events[["security_id", "kind"]].values.tolist() == [["OK", "bonus"], ["OK", "split"]]
-    assert events.loc[events["kind"] == "bonus", "factor"].tolist() == [0.5]
+    assert events[["security_id", "kind"]].values.tolist() == [["CANCEL", "bonus"], ["OK", "bonus"], ["OK", "split"]]
+    assert events.loc[events["kind"] == "bonus", "factor"].tolist() == [0.5, 0.5]
     assert review[["security_id", "reason"]].values.tolist() == [
+        ["CANCEL", "cancelled_action"],
+        ["CANCEL", "cancelled_action"],
+        ["CANCEL", "cancelled_action"],
         ["CANCEL", "cancelled_action"],
         ["CANCEL", "cancelled_action"],
         ["CONFLICT", "conflicting_factors"],

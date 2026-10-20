@@ -104,8 +104,8 @@ def _parsed_actions(observations: pd.DataFrame) -> pd.DataFrame:
     for o in observations.itertuples(index=False):
         purpose = parse_purpose(o.subject)
         if purpose is not None:
-            rows.append({"security_id": o.security_id, "symbol": o.symbol, "ex_date": o.ex_date, "subject": o.subject, "kind": purpose.kind, "factor": purpose.factor, "revision_status": getattr(o, "revision_status", "original_or_unspecified")})
-    return pd.DataFrame(rows, columns=["security_id", "symbol", "ex_date", "subject", "kind", "factor", "revision_status"])
+            rows.append({"security_id": o.security_id, "symbol": o.symbol, "ex_date": o.ex_date, "record_date": getattr(o, "record_date", None), "subject": o.subject, "kind": purpose.kind, "factor": purpose.factor, "revision_status": getattr(o, "revision_status", "original_or_unspecified")})
+    return pd.DataFrame(rows, columns=["security_id", "symbol", "ex_date", "record_date", "subject", "kind", "factor", "revision_status"])
 
 
 def build_events(observations: pd.DataFrame, panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -113,13 +113,21 @@ def build_events(observations: pd.DataFrame, panel: pd.DataFrame) -> tuple[pd.Da
     actions = _parsed_actions(observations)
     valid_date = pd.to_datetime(actions["ex_date"], errors="coerce").notna()
     cancelled_actions = actions.loc[actions["revision_status"].eq("cancelled")]
-    cancelled_keys = set(zip(cancelled_actions["security_id"], cancelled_actions["kind"], cancelled_actions["factor"]))
-    withheld = actions.loc[
-        actions.set_index(["security_id", "kind", "factor"]).index.isin(cancelled_keys)
-    ]
+    withheld_indexes = set(cancelled_actions.index)
+    for _, cancellation in cancelled_actions.iterrows():
+        same_action = (
+            actions["security_id"].eq(cancellation["security_id"])
+            & actions["kind"].eq(cancellation["kind"])
+            & actions["factor"].eq(cancellation["factor"])
+            & actions["revision_status"].ne("cancelled")
+        )
+        same_ex_date = actions["ex_date"].eq(cancellation["ex_date"]) & actions["ex_date"].notna() & pd.notna(cancellation["ex_date"])
+        same_record_date = actions["record_date"].eq(cancellation["record_date"]) & actions["record_date"].notna() & pd.notna(cancellation["record_date"])
+        withheld_indexes.update(actions.index[same_action & (same_ex_date | same_record_date)])
+    withheld = actions.loc[actions.index.isin(withheld_indexes)]
     cancelled = withheld.loc[valid_date.loc[withheld.index], ["security_id", "symbol", "ex_date", "subject"]].assign(reason="cancelled_action")
     eligible = actions.loc[valid_date & actions["revision_status"].ne("cancelled")].copy()
-    eligible = eligible.loc[~eligible.set_index(["security_id", "kind", "factor"]).index.isin(cancelled_keys)]
+    eligible = eligible.loc[~eligible.index.isin(withheld_indexes)]
     conflict_keys = eligible.groupby(["security_id", "ex_date", "kind"])["factor"].nunique()
     conflict_keys = set(conflict_keys[conflict_keys > 1].index)
     conflicting = eligible.loc[
