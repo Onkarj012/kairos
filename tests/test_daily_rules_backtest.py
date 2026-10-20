@@ -43,13 +43,15 @@ def test_plan_entries_caps_skips_and_trims_gross() -> None:
         {"too-large": 100, "small-a": 25, "small-b": 10, "small-c": 10},
         equity=1_000,
         cash_available=100,
-        open_count=0,
+        open_count=3,
         gross_value=750,
         held_or_pending=set(),
     )
     assert [plan.security_id for plan in plans] == ["small-a", "small-b"]
     assert all(plan.reserved <= 50 for plan in plans)
     assert sum(plan.reserved for plan in plans) <= 50
+    ungated = plan_entries(ranked[1:3], {"small-a": 25, "small-b": 10}, 1_000, 100, 3, 0, set())
+    assert [plan.qty for plan in ungated] == [1, 7]
 
 
 def _sessions(count: int = 6) -> list[date]:
@@ -64,12 +66,16 @@ def _panel(
     opens: dict[date, float] | None = None,
     closes: dict[date, float] | None = None,
     factors: dict[date, float] | None = None,
+    prev_closes: dict[date, float] | None = None,
+    prev_close_factors: dict[date, float] | None = None,
 ) -> pd.DataFrame:
     """Build a synthetic one-security raw-price panel."""
     omit = omit or set()
     opens = opens or {}
     closes = closes or {}
     factors = factors or {}
+    prev_closes = prev_closes or {}
+    prev_close_factors = prev_close_factors or {}
     rows = []
     for session in sessions:
         if session in omit:
@@ -82,11 +88,11 @@ def _panel(
                 "high": 101.0,
                 "low": 99.0,
                 "close": closes.get(session, 100.0),
-                "prev_close": 100.0,
+                "prev_close": prev_closes.get(session, 100.0),
                 "traded_value": 100_000.0,
                 "volume": 1_000,
                 "adj_factor": factors.get(session, 1.0),
-                "prev_close_factor": 1.0,
+                "prev_close_factor": prev_close_factors.get(session, 1.0),
             }
         )
     return pd.DataFrame(rows)
@@ -152,7 +158,9 @@ def test_engine_waits_for_missing_exit_row_and_rescales_split_qty() -> None:
         sessions[:5],
         opens={sessions[4]: 50},
         closes={sessions[1]: 100, sessions[2]: 50, sessions[3]: 50, sessions[4]: 50},
-        factors={sessions[2]: 0.5, sessions[3]: 0.5, sessions[4]: 0.5},
+        factors={sessions[0]: 0.5, sessions[1]: 0.5},
+        prev_closes={sessions[3]: 50, sessions[4]: 50},
+        prev_close_factors={sessions[0]: 0.5, sessions[1]: 0.5, sessions[2]: 0.5},
     )
     split = _run(split_panel, sessions[:5]).trades.iloc[0]
     assert split["qty"] == 2 * 19

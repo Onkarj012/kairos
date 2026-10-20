@@ -180,7 +180,8 @@ def run_backtest(
                 continue
             factor = value(row, "adj_factor")
             if factor and position.last_factor and factor != position.last_factor:
-                position.qty = floor(position.qty * position.last_factor / factor)
+                # Pre-ex rows carry the smaller factor, so a 2:1 split (0.5 -> 1.0) doubles the shares.
+                position.qty = floor(position.qty * factor / position.last_factor)
                 position.trade["qty"] = position.qty
                 position.trade["flags"] = _add_flag(position.trade["flags"], "qty_rescaled")
             position.last_factor = factor

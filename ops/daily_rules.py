@@ -91,19 +91,20 @@ def plan_entries(
     held_or_pending: set[str],
 ) -> list[EntryPlan]:
     """Allocate ranked candidates within the daily cash and exposure limits."""
-    free_slots = min(MAX_NEW_PER_DAY, MAX_OPEN - open_count)
-    if free_slots <= 0 or equity <= 0 or cash_available <= 0:
+    free_slots = MAX_OPEN - open_count
+    max_new = min(MAX_NEW_PER_DAY, free_slots)
+    if max_new <= 0 or equity <= 0 or cash_available <= 0:
         return []
     plans: list[EntryPlan] = []
     cash_left = cash_available
     gross_left = max(0.0, MAX_GROSS_SHARE * equity - gross_value)
     for rank_index, candidate in enumerate(ranked):
-        if len(plans) >= free_slots:
+        if len(plans) >= max_new:
             break
         close_t = closes.get(candidate.security_id, 0.0)
         if candidate.security_id in held_or_pending or close_t <= 0:
             continue
-        budget = min(MAX_POSITION_SHARE * equity, cash_left / free_slots, gross_left)
+        budget = min(MAX_POSITION_SHARE * equity, cash_left / (free_slots - len(plans)), gross_left)
         qty = entry_quantity(close_t, budget)
         if qty <= 0:
             continue
