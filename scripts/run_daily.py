@@ -11,6 +11,7 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from ops.alerts import send_alert
 from ops.daily_runner import IST, JOBS, Runner, clear, default_paths, now_ist, replay_check, start, status
 
 
@@ -38,7 +39,12 @@ def main(argv: list[str] | None = None) -> int:
     paths = default_paths()
     now = datetime.fromisoformat(args.now).replace(tzinfo=IST) if args.now else now_ist()
     if args.command in JOBS:
-        result: object = Runner(paths, now).run(args.command)
+        try:
+            result: object = Runner(paths, now).run(args.command)
+        except Exception as exc:
+            # A crash records no run marker, so the next job halts; the alert says why.
+            send_alert("error", f"daily runner {args.command} crashed", root=paths.runner, error=f"{type(exc).__name__}: {exc}")
+            raise
         code = 1 if isinstance(result, dict) and result.get("status") == "halted" else 0
     elif args.command == "start":
         result, code = start(paths, now, args.note), 0
