@@ -221,6 +221,24 @@ def test_fill_with_an_unexplained_move_halts_after_settling(tmp_path: Path) -> N
     assert [h.security_id for h in view.state.holdings] == ["A"]
 
 
+def test_clearing_one_moved_id_still_halts_on_another_filled_that_session(tmp_path: Path) -> None:
+    panel = _review_panel()
+    on_s2 = panel["session_date"] == SESSIONS[2]
+    panel.loc[on_s2 & panel["security_id"].isin(["A", "B"]), "close"] = 55.0
+    market = _market(panel, guard_from=SESSIONS[0])
+    picks = dict(PICKS)
+    PICKS[SESSIONS[1]] = ["B"]
+    try:
+        account = replay(market, tmp_path, (SPEC,), SESSIONS[0], SESSIONS[-1])[SPEC.account_id]
+        assert [h.get("ids") for h in account.view().halts] == [["A"]]
+        account.clear_halts(session=SESSIONS[2].isoformat(), note="checked A")
+        view = advance(account, account.view(), market, SESSIONS[2], plan=False)
+    finally:
+        PICKS.clear()
+        PICKS.update(picks)
+    assert [(h["session"], h.get("ids")) for h in view.halts] == [(SESSIONS[2].isoformat(), ["B"])]
+
+
 def test_fill_move_left_unhalted_by_a_crash_halts_on_the_next_run(tmp_path: Path) -> None:
     panel = _review_panel()
     panel.loc[(panel["security_id"] == "A") & (panel["session_date"] == SESSIONS[1]), "close"] = 55.0

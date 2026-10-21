@@ -359,15 +359,14 @@ def _loss_halt(view: AccountView) -> tuple[str, str] | None:
     return None
 
 
-def _held_move(view: AccountView, market: Market, session: date) -> str | None:
-    """Describe a held id's unexplained move on a session after action coverage, if any."""
+def _held_moves(view: AccountView, market: Market, session: date) -> set[str]:
+    """Return held ids with an unexplained move on a session after action coverage."""
     if session <= market.guard_from:
-        return None
+        return set()
     ids = [holding.security_id for holding in view.state.holdings]
     day = market.day(session)
     rows = day.loc[day.index.intersection(ids)].reset_index()
-    flagged = _unexplained_ids(rows, market.guard_from, market.covered)
-    return ", ".join(sorted(flagged)) or None
+    return _unexplained_ids(rows, market.guard_from, market.covered)
 
 
 def account_opened(account: DailyAccount) -> str:
@@ -376,13 +375,13 @@ def account_opened(account: DailyAccount) -> str:
 
 
 def _check_move(account: DailyAccount, view: AccountView, market: Market, session: date) -> bool:
-    """Halt on a held id's unexplained move on a session unless that session's move halt was already cleared once."""
-    if (session.isoformat(), "unexplained_move") in view.halt_history:
-        return False
-    moved = _held_move(view, market, session)
+    """Halt on held ids with an unexplained move on a session, leaving out ids an earlier halt there already covered."""
+    cleared = view.halt_history.get((session.isoformat(), "unexplained_move"), set())
+    moved = sorted(_held_moves(view, market, session) - cleared)
     if not moved:
         return False
-    account.halt(view, session=session.isoformat(), reason="unexplained_move", detail=f"held {moved} moved beyond {MOVE_GUARD:.0%} with no known action")
+    account.halt(view, session=session.isoformat(), reason="unexplained_move",
+                 detail=f"held {', '.join(moved)} moved beyond {MOVE_GUARD:.0%} with no known action", ids=moved)
     return True
 
 

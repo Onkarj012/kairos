@@ -59,7 +59,7 @@ class AccountView:
     settled: set[str] = field(default_factory=set)
     signalled: set[str] = field(default_factory=set)
     halts: list[dict[str, object]] = field(default_factory=list)
-    halt_history: set[tuple[str, str]] = field(default_factory=set)
+    halt_history: dict[tuple[str, str], set[str]] = field(default_factory=dict)
     clears: int = 0
 
     @property
@@ -139,7 +139,8 @@ class DailyAccount:
                 view.engine_events.append(event)
             elif event.kind == "HALTED":
                 view.halts.append({"session": event.session, **event.data})
-                view.halt_history.add((event.session, str(event.data["reason"])))
+                key = (event.session, str(event.data["reason"]))
+                view.halt_history.setdefault(key, set()).update(str(i) for i in event.data.get("ids", []))
             elif event.kind == "HALT_CLEARED":
                 view.halts = []
                 view.clears += 1
@@ -150,14 +151,14 @@ class DailyAccount:
         for event in events:
             self._append(event)
 
-    def halt(self, view: AccountView, *, session: str, reason: str, detail: str) -> None:
-        """Open a halt that blocks the account until a manual clear."""
+    def halt(self, view: AccountView, *, session: str, reason: str, detail: str, ids: list[str] | None = None) -> None:
+        """Open a halt that blocks the account until a manual clear; ``ids`` names the securities it covers."""
         if any(h["reason"] == reason for h in view.halts):
             return
-        event = AccountEvent("HALTED", session, {"reason": reason, "detail": detail})
-        self._append(event, key=f"{session}:{reason}:{view.clears}")
-        view.halts.append({"session": session, "reason": reason, "detail": detail})
-        view.halt_history.add((session, reason))
+        data: dict[str, object] = {"reason": reason, "detail": detail, **({"ids": sorted(ids)} if ids else {})}
+        self._append(AccountEvent("HALTED", session, data), key=f"{session}:{reason}:{view.clears}")
+        view.halts.append({"session": session, **data})
+        view.halt_history.setdefault((session, reason), set()).update(ids or [])
 
     def clear_halts(self, *, session: str, note: str) -> list[str]:
         """Clear every open halt with a note; return the cleared reasons."""
