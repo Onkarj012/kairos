@@ -59,6 +59,7 @@ class AccountView:
     settled: set[str] = field(default_factory=set)
     signalled: set[str] = field(default_factory=set)
     halts: list[dict[str, object]] = field(default_factory=list)
+    halt_history: set[tuple[str, str]] = field(default_factory=set)
     clears: int = 0
 
     @property
@@ -138,6 +139,7 @@ class DailyAccount:
                 view.engine_events.append(event)
             elif event.kind == "HALTED":
                 view.halts.append({"session": event.session, **event.data})
+                view.halt_history.add((event.session, str(event.data["reason"])))
             elif event.kind == "HALT_CLEARED":
                 view.halts = []
                 view.clears += 1
@@ -155,6 +157,7 @@ class DailyAccount:
         event = AccountEvent("HALTED", session, {"reason": reason, "detail": detail})
         self._append(event, key=f"{session}:{reason}:{view.clears}")
         view.halts.append({"session": session, "reason": reason, "detail": detail})
+        view.halt_history.add((session, reason))
 
     def clear_halts(self, *, session: str, note: str) -> list[str]:
         """Clear every open halt with a note; return the cleared reasons."""

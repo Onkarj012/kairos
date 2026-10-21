@@ -196,6 +196,43 @@ def test_held_unexplained_move_halts_before_settling(tmp_path: Path) -> None:
     assert view.state.last_session == SESSIONS[3].isoformat()
 
 
+def test_replay_closes_positions_with_no_exit_data_at_the_terminal_session(tmp_path: Path) -> None:
+    panel = _review_panel()
+    panel = panel.loc[~((panel["security_id"] == "D") & (panel["session_date"] >= SESSIONS[6]))]
+    market = _market(panel)
+    account = replay(market, tmp_path, (SPEC,), SESSIONS[0], SESSIONS[-1])[SPEC.account_id]
+    expected = _backtest(market)
+    assert account.trades().to_csv(index=False) == expected.trades.to_csv(index=False)
+    assert not account.view().state.holdings
+
+
+def test_fill_with_an_unexplained_move_halts_after_settling(tmp_path: Path) -> None:
+    panel = _review_panel()
+    panel.loc[(panel["security_id"] == "A") & (panel["session_date"] == SESSIONS[1]), "close"] = 55.0
+    market = _market(panel, guard_from=SESSIONS[0])
+    account = replay(market, tmp_path, (SPEC,), SESSIONS[0], SESSIONS[-1])[SPEC.account_id]
+    view = account.view()
+    assert [(h["session"], h["reason"]) for h in view.halts] == [(SESSIONS[1].isoformat(), "unexplained_move")]
+    assert [h.security_id for h in view.state.holdings] == ["A"]
+
+
+def test_loss_crossing_left_unhalted_by_a_crash_halts_on_the_next_run(tmp_path: Path) -> None:
+    market = _market()
+    account = DailyAccount(tmp_path, SPEC)
+    account.open(session=SESSIONS[0].isoformat(), verdict="replay")
+    account.append([AccountEvent("RECONCILED", SESSIONS[0].isoformat(), {
+        "cash": 94_000.0, "positions_value": 0.0, "equity": 94_000.0, "daily_return": -0.06, "marks": {},
+    })])  # crash before the loss halt was written
+    view = advance(account, account.view(), market, SESSIONS[1], plan=True)
+    assert [(h["session"], h["reason"]) for h in view.halts] == [(SESSIONS[0].isoformat(), "loss_limit_month")]
+    assert SESSIONS[1].isoformat() not in account.view().settled
+
+    account.clear_halts(session=SESSIONS[1].isoformat(), note="checked")
+    view = advance(account, account.view(), market, SESSIONS[1], plan=True)
+    assert not view.halts
+    assert SESSIONS[1].isoformat() in view.signalled
+
+
 def test_loss_limits_halt_on_crossing_only(tmp_path: Path) -> None:
     account = DailyAccount(tmp_path, SPEC)
     account.open(session=SESSIONS[0].isoformat(), verdict="replay")
@@ -287,7 +324,7 @@ def _patch_strategies(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_scheduled_jobs_settle_plan_and_send_in_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_strategies(monkeypatch)
     paths = _live_paths(tmp_path)
-    start(paths, datetime(2026, 10, 20, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
     assert _run(paths, "reconcile", LIVE[0], "18:50")["status"] == "ok"
     assert _run(paths, "signal", LIVE[0], "19:35")["planned"] == {a.spec.account_id: 2 for a in _accounts(paths)}
     assert _run(paths, "signal", LIVE[0], "20:20")["status"] == "already_done"
@@ -304,26 +341,36 @@ def test_scheduled_jobs_settle_plan_and_send_in_order(tmp_path: Path, monkeypatc
 def test_missed_and_late_runs_halt_every_account(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_strategies(monkeypatch)
     paths = _live_paths(tmp_path)
-    start(paths, datetime(2026, 10, 20, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
     _run(paths, "reconcile", LIVE[0], "18:50")
     _run(paths, "signal", LIVE[0], "19:35")
     assert _run(paths, "place", LIVE[1], "10:05")["status"] == "halted"
     assert {h["reason"] for a in _accounts(paths) for h in a.view().halts} == {"late_run"}
 
     clear(paths, datetime(2026, 10, 22, 12, 0, tzinfo=IST), "checked")
+    _run(paths, "reconcile", LIVE[1], "18:50")
     _run(paths, "signal", LIVE[1], "19:35")
     _run(paths, "reconcile", LIVE[2], "18:50")  # place on LIVE[2] never ran
+    assert {h["reason"] for a in _accounts(paths) for h in a.view().halts} == {"missed_run"}
+
+
+def test_recovery_marker_does_not_cover_a_later_missed_slot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+    paths = _live_paths(tmp_path)
+    start(paths, datetime(2026, 10, 20, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    _run(paths, "place", LIVE[1], "08:46")  # every LIVE[0] slot was missed
     assert {h["reason"] for a in _accounts(paths) for h in a.view().halts} == {"missed_run"}
 
 
 def test_cleared_halt_catches_up_missed_sessions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_strategies(monkeypatch)
     paths = _live_paths(tmp_path)
-    start(paths, datetime(2026, 10, 20, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
     _run(paths, "reconcile", LIVE[0], "18:50")
     _run(paths, "signal", LIVE[0], "19:35")
     _run(paths, "place", LIVE[1], "10:05")  # late: halts and freezes every account
     clear(paths, datetime(2026, 10, 23, 12, 0, tzinfo=IST), "checked")
+    _run(paths, "reconcile", LIVE[2], "18:50")
     _run(paths, "signal", LIVE[2], "19:35")
     for account in _accounts(paths):
         view = account.view()
@@ -334,7 +381,7 @@ def test_cleared_halt_catches_up_missed_sessions(tmp_path: Path, monkeypatch: py
 def test_signal_waits_then_halts_on_stale_bhavcopy_within_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_strategies(monkeypatch)
     paths = _live_paths(tmp_path)
-    start(paths, datetime(2026, 10, 20, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
     _run(paths, "reconcile", LIVE[0], "18:50")
     cash = FakeCash(set())
     assert _run(paths, "signal", LIVE[0], "19:31", cash)["status"] == "waiting"
@@ -348,13 +395,14 @@ def test_signal_waits_then_halts_on_stale_bhavcopy_within_budget(tmp_path: Path,
         ("nsearchives_full_bhavdata", False),
         ("nsearchives_udiff_zip", False),
     ]
+    assert "request budget spent for 2026-10-21" in result["detail"]
     assert {h["reason"] for a in _accounts(paths) for h in a.view().halts} == {"stale_bhavcopy"}
 
 
 def test_signal_skips_a_request_that_could_break_the_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_strategies(monkeypatch)
     paths = _live_paths(tmp_path)
-    start(paths, datetime(2026, 10, 20, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
     _run(paths, "reconcile", LIVE[0], "18:50")
     cash = FakeCash(set(), spent=4)
     assert _run(paths, "signal", LIVE[0], "19:31", cash)["status"] == "waiting"

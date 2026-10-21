@@ -375,10 +375,28 @@ def account_opened(account: DailyAccount) -> str:
     return str(read_events(account.path)[0].payload["session"])
 
 
-def advance(account: DailyAccount, view: AccountView, market: Market, through: date, *, plan: bool) -> AccountView:
-    """Settle every unsettled session through a date, then plan that date's entries when asked."""
+def _check_loss(account: DailyAccount, view: AccountView) -> bool:
+    """Halt on a loss-limit crossing at the latest mark unless that crossing was already halted once."""
+    loss = _loss_halt(view)
+    if not loss:
+        return False
+    session = next(e.session for e in reversed(view.engine_events) if e.kind == "RECONCILED")
+    if (session, loss[0]) in view.halt_history:
+        return False
+    account.halt(view, session=session, reason=loss[0], detail=loss[1])
+    return True
+
+
+def advance(account: DailyAccount, view: AccountView, market: Market, through: date, *, plan: bool, final: bool = False) -> AccountView:
+    """Settle every unsettled session through a date, then plan that date's entries when asked.
+
+    ``final`` closes positions with no exit data at ``through``, as the backtest does on its last session.
+    """
     opened = account_opened(account)
     pending = [s for s in market.sessions if opened <= s.isoformat() <= through.isoformat() and s.isoformat() not in view.settled]
+    # A crash between RECONCILED and its loss halt leaves the crossing unhalted; catch it before moving on.
+    if not view.halted and _check_loss(account, view):
+        return view
     for session in pending:
         if view.halted:
             return view
@@ -389,13 +407,17 @@ def advance(account: DailyAccount, view: AccountView, market: Market, through: d
         if moved:
             account.halt(view, session=session.isoformat(), reason="unexplained_move", detail=f"held {moved} moved beyond {MOVE_GUARD:.0%} with no known action")
             return view
-        events = settle_session(view.state, session.isoformat(), market.bar(session), market.exit_due_after, require_sent=True)
+        events = settle_session(view.state, session.isoformat(), market.bar(session), market.exit_due_after,
+                                final=final and session == through, require_sent=True)
         account.append(events)
         view.engine_events.extend(events)
         view.settled.add(session.isoformat())
-        loss = _loss_halt(view)
-        if loss:
-            account.halt(view, session=session.isoformat(), reason=loss[0], detail=loss[1])
+        # Entries filled at today's open were not held for the check above.
+        moved = _held_move(view, market, session)
+        if moved:
+            account.halt(view, session=session.isoformat(), reason="unexplained_move", detail=f"filled {moved} moved beyond {MOVE_GUARD:.0%} with no known action")
+            return view
+        if _check_loss(account, view):
             return view
     day = through.isoformat()
     if not plan or view.halted or day in view.signalled or day not in view.settled:
@@ -459,8 +481,16 @@ class RunLog:
         if not markers:
             return False, "no run markers; run `start` first"
         last = markers[-1]
-        if last.event_type == "JOB_RECOVERED" or last.job_id == predecessor:
+        if last.job_id == predecessor:
             return True, ""
+        if last.event_type == "JOB_RECOVERED":
+            # A recovery only stands in for the slot right before it; an older one means a slot was missed since.
+            job, session = predecessor.split(":", 1)
+            slot_start = datetime.combine(date.fromisoformat(session), WINDOWS[job][0], tzinfo=IST)
+            at = datetime.fromisoformat(str(last.payload["at"]))
+            if (at if at.tzinfo else at.replace(tzinfo=IST)) >= slot_start:
+                return True, ""
+            return False, f"expected {predecessor} before this run; the last marker is a recovery from {last.payload['at']}"
         return False, f"expected {predecessor} before this run, last marker is {last.job_id}"
 
     def mark(self, job_id: str, status: str, detail: str) -> None:
@@ -646,6 +676,10 @@ class Runner:
         still = [s for s in missing if not cash.retained(s)]
         if still:
             detail = f"no accepted bhavcopy for {', '.join(s.isoformat() for s in still)} after slot {slot + 1}/{len(FETCH_SLOTS)}"
+            # The collector's request budget per session is durable, so a spent session never refetches on its own.
+            spent = [s.isoformat() for s in still if cash.spent(s) + CALL_ATTEMPTS > NIGHT_REQUEST_BUDGET]
+            if spent:
+                detail += f"; request budget spent for {', '.join(spent)}, retain those files by hand before clearing"
             if final:
                 self.halt_all(today, "stale_bhavcopy", detail)
                 runs.mark(job_id, "halted", detail)
@@ -733,7 +767,7 @@ def replay(market: Market, root: Path, specs: tuple[AccountSpec, ...], first_sig
         for account in accounts.values():
             if index > first_index:
                 place(account, account.view(), session, market.sessions[index - 1])
-            advance(account, account.view(), market, session, plan=index <= plan_until)
+            advance(account, account.view(), market, session, plan=index <= plan_until, final=index == last_index)
     return accounts
 
 
