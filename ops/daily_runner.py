@@ -375,6 +375,17 @@ def account_opened(account: DailyAccount) -> str:
     return str(read_events(account.path)[0].payload["session"])
 
 
+def _check_move(account: DailyAccount, view: AccountView, market: Market, session: date) -> bool:
+    """Halt on a held id's unexplained move on a session unless that session's move halt was already cleared once."""
+    if (session.isoformat(), "unexplained_move") in view.halt_history:
+        return False
+    moved = _held_move(view, market, session)
+    if not moved:
+        return False
+    account.halt(view, session=session.isoformat(), reason="unexplained_move", detail=f"held {moved} moved beyond {MOVE_GUARD:.0%} with no known action")
+    return True
+
+
 def _check_loss(account: DailyAccount, view: AccountView) -> bool:
     """Halt on a loss-limit crossing at the latest mark unless that crossing was already halted once."""
     loss = _loss_halt(view)
@@ -387,6 +398,14 @@ def _check_loss(account: DailyAccount, view: AccountView) -> bool:
     return True
 
 
+def _check_settled(account: DailyAccount, view: AccountView, market: Market) -> bool:
+    """Run the halts due after a settle on the last settled session; return whether one fired."""
+    if view.state.last_session is None:
+        return False
+    # Entries filled at that session's open were not held for the check before the settle.
+    return _check_move(account, view, market, date.fromisoformat(view.state.last_session)) or _check_loss(account, view)
+
+
 def advance(account: DailyAccount, view: AccountView, market: Market, through: date, *, plan: bool, final: bool = False) -> AccountView:
     """Settle every unsettled session through a date, then plan that date's entries when asked.
 
@@ -394,8 +413,8 @@ def advance(account: DailyAccount, view: AccountView, market: Market, through: d
     """
     opened = account_opened(account)
     pending = [s for s in market.sessions if opened <= s.isoformat() <= through.isoformat() and s.isoformat() not in view.settled]
-    # A crash between RECONCILED and its loss halt leaves the crossing unhalted; catch it before moving on.
-    if not view.halted and _check_loss(account, view):
+    # A crash between RECONCILED and its halts leaves them unwritten; rerun them before moving on.
+    if not view.halted and _check_settled(account, view, market):
         return view
     for session in pending:
         if view.halted:
@@ -403,21 +422,14 @@ def advance(account: DailyAccount, view: AccountView, market: Market, through: d
         if session not in market.present:
             account.halt(view, session=session.isoformat(), reason="missing_session_data", detail=f"no panel rows for {session}")
             return view
-        moved = _held_move(view, market, session)
-        if moved:
-            account.halt(view, session=session.isoformat(), reason="unexplained_move", detail=f"held {moved} moved beyond {MOVE_GUARD:.0%} with no known action")
+        if _check_move(account, view, market, session):
             return view
         events = settle_session(view.state, session.isoformat(), market.bar(session), market.exit_due_after,
                                 final=final and session == through, require_sent=True)
         account.append(events)
         view.engine_events.extend(events)
         view.settled.add(session.isoformat())
-        # Entries filled at today's open were not held for the check above.
-        moved = _held_move(view, market, session)
-        if moved:
-            account.halt(view, session=session.isoformat(), reason="unexplained_move", detail=f"filled {moved} moved beyond {MOVE_GUARD:.0%} with no known action")
-            return view
-        if _check_loss(account, view):
+        if _check_settled(account, view, market):
             return view
     day = through.isoformat()
     if not plan or view.halted or day in view.signalled or day not in view.settled:
@@ -472,8 +484,14 @@ class RunLog:
         return [e for e in read_events(self.path) if e.event_type in ("JOB_SUCCEEDED", "JOB_RECOVERED")]
 
     def has(self, job_id: str) -> bool:
-        """Return whether a job already recorded its marker."""
-        return any(e.event_type == "JOB_SUCCEEDED" and e.job_id == job_id for e in self.markers())
+        """Return whether a job finished its slot; a halted run reopens after a later manual recovery."""
+        status: str | None = None
+        for event in self.markers():
+            if event.event_type == "JOB_SUCCEEDED" and event.job_id == job_id:
+                status = str(event.payload["status"])
+            elif event.event_type == "JOB_RECOVERED" and status == "halted":
+                status = None
+        return status is not None
 
     def predecessor_ok(self, predecessor: str) -> tuple[bool, str]:
         """Check that the last marker is the predecessor slot or a manual recovery."""
@@ -494,9 +512,10 @@ class RunLog:
         return False, f"expected {predecessor} before this run, last marker is {last.job_id}"
 
     def mark(self, job_id: str, status: str, detail: str) -> None:
-        """Record a job's single marker for its slot."""
-        self.writer.append(event_id=job_id, event_type="JOB_SUCCEEDED", study_id="daily-runner", job_id=job_id, attempt=1,
-                           payload={"status": status, "detail": detail})
+        """Record a job's marker for its slot; a rerun after a recovery gets its own event id."""
+        runs = sum(1 for e in self.markers() if e.event_type == "JOB_SUCCEEDED" and e.job_id == job_id)
+        self.writer.append(event_id=job_id if runs == 0 else f"{job_id}:run-{runs + 1}", event_type="JOB_SUCCEEDED",
+                           study_id="daily-runner", job_id=job_id, attempt=runs + 1, payload={"status": status, "detail": detail})
 
     def waiting(self, job_id: str, slot: int, detail: str) -> None:
         """Record a signal slot that ended without the bhavcopy."""
@@ -626,6 +645,8 @@ class Runner:
         ok, detail = runs.predecessor_ok(_predecessor(job, today, calendar))
         if not ok:
             self.halt_all(today, "missed_run", detail)
+            runs.mark(job_id, "halted", detail)
+            return {"job": job, "session": today.isoformat(), "status": "halted", "detail": detail}
         start_at, end_at = WINDOWS[job]
         if not start_at <= self.now.time() <= end_at:
             late = f"{job} ran at {self.now:%H:%M} IST, outside {start_at:%H:%M}-{end_at:%H:%M}"
