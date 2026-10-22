@@ -878,7 +878,11 @@ class Runner:
                 return {"status": "halted", "detail": detail}
             runs.waiting(job_id, slot, detail)
             return {"status": "waiting", "detail": detail}
-        self.build(self.paths, calendar, today, self._nightly_adjustments(today))
+        self.build(self.paths, calendar, today, None)
+        adjustments = self._nightly_adjustments(today)
+        if adjustments is not None:
+            # The merge maps ex-dates to tonight's panel, so the panel is built again with the factors it changed.
+            self.build(self.paths, calendar, today, adjustments)
         market = load_market(self.paths, live=True, calendar=calendar)
         planned: dict[str, int] = {}
         for account, view in self.ready_accounts():
@@ -893,7 +897,7 @@ class Runner:
         return {"status": "ok", "fetched": fetched, "planned": planned}
 
     def _nightly_adjustments(self, today: date) -> Path | None:
-        """Merge tonight's NSE actions when KAIROS_DAILY_ACTIONS=1; any failure alerts and returns None, so the build keeps stage 0 factors."""
+        """Merge tonight's NSE actions when KAIROS_DAILY_ACTIONS=1; return a factor dir only when it changes stage 0. Any failure alerts and returns None, so the stage 0 panel stands."""
         if not daily_actions.enabled(read_env(self.env_file)):
             return None
         try:
