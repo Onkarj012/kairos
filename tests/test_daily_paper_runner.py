@@ -458,12 +458,13 @@ class FakeTelegram:
 
     chat_id = "42"
 
-    def __init__(self, presses: list[tuple[str, str]] | None = None, fail: bool = False) -> None:
+    def __init__(self, presses: list[tuple[str, str]] | None = None, fail: bool = False, batch: int = 100) -> None:
         self.sent: list[tuple[str, list[list[Button]] | None]] = []
         self.answers: list[str] = []
         self.offsets: list[int | None] = []
         self.presses = presses or []
         self.fail = fail
+        self.batch = batch
 
     def send(self, text: str, rows: list[list[Button]] | None = None) -> None:
         if self.fail:
@@ -472,10 +473,12 @@ class FakeTelegram:
 
     def updates(self, offset: int | None) -> list[dict[str, object]]:
         self.offsets.append(offset)
-        return [
+        pending = [
             {"update_id": 100 + n, "callback_query": {"id": f"cb{n}", "data": data, "message": {"chat": {"id": int(chat)}}}}
             for n, (data, chat) in enumerate(self.presses)
+            if offset is None or 100 + n >= offset
         ]
+        return pending[: self.batch]
 
     def answer(self, callback_id: str, text: str) -> None:
         self.answers.append(text)
@@ -516,6 +519,7 @@ def test_place_records_answers_and_sends_only_unrejected_intents(tmp_path: Path,
         ("r:paper-reversal_5d-100k:2026-10-21:A", "7"),  # another chat: ignored
         ("r:paper-reversal_5d-100k:2026-10-14:A", "42"),  # an old signal: too late
     ])
+    bot.batch = 2  # Telegram pages updates; a rejection in a later page must still count
     result = _telegram_run(paths, "place", LIVE[1], "08:46", bot)
     assert result["decided"] == 2
     assert result["sent"]["paper-reversal_5d-50k"] == 1
@@ -552,6 +556,38 @@ def test_every_halt_a_job_opens_is_posted_once(tmp_path: Path, monkeypatch: pyte
     assert len(bot.sent) == 1
     assert bot.sent[0][0].startswith("HALT late_run on 2026-10-22")
     assert all(spec.account_id in bot.sent[0][0] for spec in PAPER_ACCOUNTS)
+
+
+def test_a_halt_left_unposted_by_a_failed_post_goes_out_on_the_next_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+    paths = _live_paths(tmp_path)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    _run(paths, "reconcile", LIVE[0], "18:50")
+    _run(paths, "signal", LIVE[0], "19:35")
+    _telegram_run(paths, "place", LIVE[1], "10:05", FakeTelegram(fail=True))  # late halt; the post fails
+    bot = FakeTelegram()
+    _telegram_run(paths, "reconcile", LIVE[1], "18:50", bot)
+    _telegram_run(paths, "signal", LIVE[1], "19:35", bot)
+    assert [text.split("\n")[0] for text, _rows in bot.sent] == ["HALT late_run on 2026-10-22"]
+
+
+def test_bot_turns_a_truncated_response_into_a_telegram_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    import http.client
+    import urllib.request
+
+    class Truncated:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            raise http.client.IncompleteRead(b"{")
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout: Truncated())
+    with pytest.raises(TelegramError, match="IncompleteRead"):
+        BotApi("123456:SECRET-TOKEN", "42").updates(None)
 
 
 def test_a_failing_bot_never_stops_a_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

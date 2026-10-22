@@ -59,6 +59,7 @@ CALL_ATTEMPTS = 3
 NIGHT_REQUEST_BUDGET = 6
 LOSS_LIMIT_TOTAL = 0.10
 LOSS_LIMIT_MONTH = 0.05
+UPDATE_BATCHES = 50
 MOVE_GUARD = 0.35
 REPLAY_FIRST_SIGNAL = date(2025, 8, 28)
 REPLAY_LAST_SESSION = date(2025, 9, 30)
@@ -125,6 +126,10 @@ class RunnerPaths:
     @property
     def telegram_offset(self) -> Path:
         return self.runner / "runner-v1/telegram-offset.json"
+
+    @property
+    def telegram_halts_posted(self) -> Path:
+        return self.runner / "runner-v1/telegram-halts-posted.json"
 
     @property
     def research_ledger(self) -> Path:
@@ -602,19 +607,21 @@ class Runner:
     log: Callable[[str], None] = print
     telegram: Telegram | None = None
 
-    def notify(self, text: str, rows: list[list[Button]] | None = None) -> None:
-        """Post to Telegram when a bot is configured; a failed post is logged and never stops the job."""
+    def notify(self, text: str, rows: list[list[Button]] | None = None) -> bool:
+        """Post to Telegram when a bot is configured; return whether it went out. A failure never stops the job."""
         if self.telegram is None:
-            return
+            return False
         try:
             self.telegram.send(text, rows)
         except TelegramError as exc:
             send_alert("warning", "telegram post failed", root=self.paths.runner, error=str(exc))
             self.log(f"telegram post failed: {exc}")
+            return False
+        return True
 
-    def open_halts(self) -> set[tuple[str, str, str, str]]:
-        """Return every open halt as (account, session, reason, detail)."""
-        found: set[tuple[str, str, str, str]] = set()
+    def open_halts(self) -> set[tuple[str, str, str, str, int]]:
+        """Return every open halt as (account, session, reason, detail, clears before it)."""
+        found: set[tuple[str, str, str, str, int]] = set()
         for account in self.accounts():
             if not account.exists():
                 continue
@@ -622,19 +629,28 @@ class Runner:
                 view = account.view()
             except (LedgerError, ValueError):
                 continue
-            found |= {(account.spec.account_id, str(h["session"]), str(h["reason"]), str(h["detail"])) for h in view.halts}
+            found |= {(account.spec.account_id, str(h["session"]), str(h["reason"]), str(h["detail"]), view.clears) for h in view.halts}
         return found
 
-    def post_halts(self, before: set[tuple[str, str, str, str]]) -> None:
-        """Post each halt opened since a snapshot, one message per reason and session."""
-        grouped: dict[tuple[str, str, str], list[str]] = {}
-        for account_id, session, reason, detail in sorted(self.open_halts() - before):
-            grouped.setdefault((session, reason, detail), []).append(account_id)
-        for (session, reason, detail), ids in grouped.items():
-            self.notify(
-                f"HALT {reason} on {session}\n{detail}\nAccounts: {', '.join(ids)}\n"
+    def post_halts(self) -> None:
+        """Post every open halt not yet posted, one message per reason and session; unposted ones retry on the next job."""
+        if self.telegram is None:
+            return
+        path = self.paths.telegram_halts_posted
+        posted = set(json.loads(path.read_text(encoding="utf-8"))) if path.exists() else set()
+        grouped: dict[tuple[str, str, str], list[tuple[str, str]]] = {}
+        for account_id, session, reason, detail, clears in sorted(self.open_halts()):
+            key = f"{account_id}|{session}|{reason}|{clears}"
+            if key not in posted:
+                grouped.setdefault((session, reason, detail), []).append((account_id, key))
+        for (session, reason, detail), members in grouped.items():
+            sent = self.notify(
+                f"HALT {reason} on {session}\n{detail}\nAccounts: {', '.join(a for a, _k in members)}\n"
                 "New intents stop until you check and run: uv run python scripts/run_daily.py clear --note \"...\""
             )
+            if sent:
+                posted |= {k for _a, k in members}
+                _write_atomic(path, (json.dumps(sorted(posted), indent=1) + "\n").encode("utf-8"))
 
     def accounts(self) -> list[DailyAccount]:
         """Return the four paper accounts."""
@@ -676,10 +692,8 @@ class Runner:
         """Run one job for today's session, then post any halt it opened; return a short status."""
         if job not in JOBS:
             raise ValueError(f"unknown job {job}")
-        before = self.open_halts() if self.telegram is not None else set()
         result = self._run(job)
-        if self.telegram is not None:
-            self.post_halts(before)
+        self.post_halts()
         return result
 
     def _run(self, job: str) -> dict[str, object]:
@@ -724,25 +738,28 @@ class Runner:
         if self.telegram is None:
             self.log("telegram not configured; intents follow each account's approval setting")
             return 0
-        try:
-            updates = self.telegram.updates(read_offset(self.paths.telegram_offset))
-        except TelegramError as exc:
-            send_alert("warning", "telegram read failed", root=self.paths.runner, error=str(exc))
-            self.log(f"telegram read failed: {exc}")
-            return 0
         ready = {account.spec.account_id: account for account, _view in self.ready_accounts()}
         recorded = 0
-        for update in updates:
-            press = parse_callback(update)
-            if press is None or callback_chat(update) != str(self.telegram.chat_id):
-                continue
-            reply = self._record_answer(ready.get(press.account_id), press.account_id, press.intent_id, press.decision, press.update_id, today, signal_session)
-            recorded += reply.startswith(("Approved", "Rejected"))
+        # Telegram returns at most 100 updates a call; read every batch so no rejection is left behind before sending.
+        for _batch in range(UPDATE_BATCHES):
             try:
-                self.telegram.answer(press.callback_id, reply)
+                updates = self.telegram.updates(read_offset(self.paths.telegram_offset))
             except TelegramError as exc:
-                self.log(f"telegram answer failed: {exc}")
-        if updates:
+                send_alert("warning", "telegram read failed", root=self.paths.runner, error=str(exc))
+                self.log(f"telegram read failed: {exc}")
+                break
+            if not updates:
+                break
+            for update in updates:
+                press = parse_callback(update)
+                if press is None or callback_chat(update) != str(self.telegram.chat_id):
+                    continue
+                reply = self._record_answer(ready.get(press.account_id), press.account_id, press.intent_id, press.decision, press.update_id, today, signal_session)
+                recorded += reply.startswith(("Approved", "Rejected"))
+                try:
+                    self.telegram.answer(press.callback_id, reply)
+                except TelegramError as exc:
+                    self.log(f"telegram answer failed: {exc}")
             write_offset(self.paths.telegram_offset, max(int(str(u["update_id"])) for u in updates) + 1)
         return recorded
 

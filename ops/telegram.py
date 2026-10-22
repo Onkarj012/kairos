@@ -6,6 +6,7 @@ token is read from ``.env`` and never logged or put in an error message.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import urllib.error
@@ -91,7 +92,7 @@ class BotApi:
                 body = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             raise TelegramError(f"{method} failed with HTTP {exc.code}") from None
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+        except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError, ValueError) as exc:
             raise TelegramError(f"{method} failed: {type(exc).__name__}") from None
         if not isinstance(body, dict) or not body.get("ok"):
             description = body.get("description") if isinstance(body, dict) else None

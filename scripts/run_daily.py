@@ -50,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             # A crash records no run marker, so the next job halts; the alert says why.
             send_alert("error", f"daily runner {args.command} crashed", root=paths.runner, error=f"{type(exc).__name__}: {exc}")
+            runner.post_halts()
             runner.notify(f"Daily runner {args.command} crashed: {type(exc).__name__}. The next job halts with missed_run.")
             raise
         code = 1 if isinstance(result, dict) and result.get("status") == "halted" else 0

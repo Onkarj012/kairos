@@ -50,6 +50,16 @@ def test_account_page_shows_halt_trade_costs_and_svg(tmp_path):
     assert "<svg" in body
 
 
+def test_account_page_keeps_cleared_halts_in_history(tmp_path):
+    account = _account(tmp_path)
+    account.clear_halts(session=SESSIONS[-1].isoformat(), note="checked the <split>")
+    status, body = _get(create_app(accounts_root=tmp_path, runner_root=tmp_path / "runner"), f"/accounts/{SPEC.account_id}")
+
+    assert status == 200
+    assert "No open halts." in body
+    assert "test_halt" in body and "checked the &lt;split&gt;" in body
+
+
 def test_account_api_returns_state_and_trades(tmp_path):
     _account(tmp_path)
     status, body = _get(create_app(accounts_root=tmp_path, runner_root=tmp_path / "runner"), f"/api/accounts/{SPEC.account_id}")

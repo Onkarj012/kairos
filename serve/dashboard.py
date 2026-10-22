@@ -44,6 +44,7 @@ class AccountPage:
     trades: pd.DataFrame
     equity: pd.DataFrame
     kill_switch: bool
+    halt_log: list[dict[str, str]]
 
     @property
     def pnl(self) -> float:
@@ -56,7 +57,14 @@ def load_account(accounts_root: Path, runner_root: Path, spec: AccountSpec) -> A
     account = DailyAccount(accounts_root, spec)
     if not account.exists():
         return None
-    opening = read_events(account.path)[0].payload
+    events = read_events(account.path)
+    opening = events[0].payload
+    halt_log = [
+        {"session": str(e.payload["session"]), "event": "halted", "reason": str(e.payload["reason"]), "detail": str(e.payload["detail"])}
+        if e.event_type == "HALTED" else
+        {"session": str(e.payload["session"]), "event": "cleared", "reason": ", ".join(map(str, e.payload["cleared"])), "detail": str(e.payload["note"])}
+        for e in events if e.event_type in {"HALTED", "HALT_CLEARED"}
+    ]
     return AccountPage(
         spec=spec,
         opened=str(opening.get("session", "")),
@@ -66,6 +74,7 @@ def load_account(accounts_root: Path, runner_root: Path, spec: AccountSpec) -> A
         trades=account.trades(),
         equity=account.equity(),
         kill_switch=kill_switch_path(runner_root, spec.account_id).exists(),
+        halt_log=halt_log,
     )
 
 
@@ -92,6 +101,7 @@ def account_json(page: AccountPage) -> dict[str, Any]:
         "last_settled": state.last_session,
         "kill_switch": page.kill_switch,
         "halts": page.view.halts,
+        "halt_log": page.halt_log,
         "positions": [
             {"security_id": h.security_id, "qty": h.qty, "entry_session": h.entry_session, "entry_price": h.entry_price,
              "last_close": h.last_close, "exit_due": h.exit_due}
@@ -186,6 +196,11 @@ def render_account(page: AccountPage) -> str:
         f'<p><span class="badge">{_e(h["reason"])}</span> {_e(h["session"])}: {_e(h["detail"])}</p>' for h in view.halts
     ) or '<p class="ok">No open halts.</p>'
     switch = '<p class="bad">Kill switch is on.</p>' if page.kill_switch else '<p class="muted">Kill switch is off.</p>'
+    history = _table(
+        [("Session", False), ("Event", False), ("Reason", False), ("Detail or note", False)],
+        [[_e(h["session"]), _e(h["event"]), _e(h["reason"]), _e(h["detail"])] for h in page.halt_log],
+        "No halts so far.",
+    )
     positions = _table(
         [("Security", False), ("Qty", True), ("Entry", False), ("Entry price", True), ("Last close", True), ("Exit due", False)],
         [[_e(h.security_id), str(h.qty), _e(h.entry_session), f"{h.entry_price:,.2f}", f"{h.last_close:,.2f}", _e(h.exit_due)] for h in state.holdings],
@@ -215,7 +230,7 @@ def render_account(page: AccountPage) -> str:
     body = (
         f'<p><a href="/accounts">All accounts</a></p><h1>{_e(page.spec.account_id)}</h1>'
         f'<section class="facts">{fact_html}</section>'
-        f"<section><h2>Halts</h2>{halt_html}{switch}</section>"
+        f"<section><h2>Halts</h2>{halt_html}{switch}<h2>Halt history</h2>{history}</section>"
         f"<section><h2>Equity after costs</h2>{equity_svg(curve, state.capital)}</section>"
         f"<section><h2>Open positions</h2>{positions}</section>"
         f"<section><h2>Open intents</h2>{intents}</section>"
