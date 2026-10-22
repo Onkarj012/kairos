@@ -108,7 +108,7 @@ def test_dry_run_leaves_out_accounts_the_place_job_skipped(tmp_path: Path) -> No
 
 
 def test_reader_failure_does_not_fail_place_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from tests.test_daily_paper_runner import CALENDAR, LIVE, _build, _live_paths, _patch_strategies, _run
+    from tests.test_daily_paper_runner import CALENDAR, LIVE, _build, _live_paths, _no_actions_request, _patch_strategies, _run
     from ops.daily_runner import Runner, IST, start
 
     class FailedReader:
@@ -121,7 +121,7 @@ def test_reader_failure_does_not_fail_place_job(tmp_path: Path, monkeypatch: pyt
     _run(paths, "reconcile", LIVE[0], "18:50")
     _run(paths, "signal", LIVE[0], "19:35")
     now = datetime(2026, 10, 22, 8, 46, tzinfo=IST)
-    runner = Runner(paths, now, calendar=CALENDAR, build=_build, log=lambda _m: None, kite=FailedReader())
+    runner = Runner(paths, now, calendar=CALENDAR, build=_build, log=lambda _m: None, kite=FailedReader(), env_file=paths.root / ".env", fetch_actions=_no_actions_request)
     result = runner.run("place")
     assert result["status"] == "ok"
     assert result["dry_run"] == 0

@@ -415,6 +415,11 @@ def _accounts(paths: RunnerPaths) -> list[DailyAccount]:
     return [DailyAccount(paths.accounts, spec) for spec in PAPER_ACCOUNTS]
 
 
+def _no_actions_request(start: date, end: date) -> dict[str, object]:
+    """Refuse every corporate-actions request, so no test reaches NSE."""
+    raise AssertionError("a test requested corporate actions")
+
+
 def _patch_strategies(monkeypatch: pytest.MonkeyPatch) -> None:
     """Rank the live test cohort with a fixed pick of A then B."""
     monkeypatch.setattr(Market, "rank", lambda self, name, session: ([Candidate("A", 1.0, "t"), Candidate("B", 0.5, "t")], [], ["A", "B", "C"]))
@@ -702,9 +707,9 @@ class FakeMac:
 
 
 def _channels_run(paths: RunnerPaths, job: str, session: date, at: str, bot: FakeTelegram | None = None, mac: Notifier | None = None) -> dict[str, object]:
-    """Run one job with the given notification channels attached."""
+    """Run one job with the given notification channels attached, and no corporate-actions request."""
     now = datetime.fromisoformat(f"{session.isoformat()}T{at}").replace(tzinfo=IST)
-    return Runner(paths, now, cash=FakeCash(set(LIVE)), calendar=CALENDAR, build=_build, log=lambda _m: None, telegram=bot, mac=mac).run(job)
+    return Runner(paths, now, cash=FakeCash(set(LIVE)), calendar=CALENDAR, build=_build, log=lambda _m: None, telegram=bot, mac=mac, env_file=paths.root / ".env", fetch_actions=_no_actions_request).run(job)
 
 
 def test_signal_sends_one_macos_notification_when_intents_exist(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
