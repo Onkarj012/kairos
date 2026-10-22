@@ -136,9 +136,9 @@ def _check_revisions(nightly: pd.DataFrame, observations: pd.DataFrame) -> None:
 
 def _check_review(review: pd.DataFrame, stage0_review: pd.DataFrame) -> None:
     """Raise naming the securities whose conflicting or ambiguous action is new since stage 0."""
-    known = stage0_review[["security_id", "ex_date", "reason"]].drop_duplicates()
+    known = stage0_review[["security_id", "ex_date", "subject", "reason"]].drop_duplicates()
     flagged = review.loc[review["reason"].isin(["conflicting_factors", "ambiguous_prev_close"])]
-    added = flagged.merge(known, on=["security_id", "ex_date", "reason"], how="left", indicator=True).query('_merge == "left_only"')
+    added = flagged.merge(known, on=["security_id", "ex_date", "subject", "reason"], how="left", indicator=True).query('_merge == "left_only"')
     if not added.empty:
         raise ValueError(f"conflicting or ambiguous corporate action for security_id {', '.join(sorted(set(added['security_id'])))}")
 

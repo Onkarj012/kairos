@@ -144,6 +144,8 @@ def test_failed_nightly_request_alerts_and_the_signal_job_still_completes(tmp_pa
 SPLIT_SUBJECT = "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share"
 TWO_RUPEE_SUBJECT = "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share"
 REVISED_SUBJECT = "Revised: Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share"
+BONUS_1_1_SUBJECT = "Bonus 1:1"
+BONUS_1_2_SUBJECT = "Bonus 1:2"
 
 
 def _panel(sessions: list[date]) -> pd.DataFrame:
@@ -190,6 +192,24 @@ def test_conflicting_ratio_for_a_stage_0_action_falls_back_to_stage_0(tmp_path: 
     monkeypatch.delenv("KAIROS_DAILY_ACTIONS", raising=False)
     paths = _nightly_paths(tmp_path)
     _stage0(paths, [_observation("2026-10-21", SPLIT_SUBJECT, "original_or_unspecified")])
+    _ready(paths)
+    panel_calls = _stub_cli_builds(monkeypatch)
+    assert _signal(paths, tmp_path, "1", _fetch([], body=_nightly_body("21-Oct-2026", TWO_RUPEE_SUBJECT)))["status"] == "ok"
+    assert all("--adjustments" not in call for call in panel_calls)
+    alerts = _alerts(paths)
+    assert [(alert["level"], alert["message"]) for alert in alerts] == [("warning", "nightly corporate actions failed")]
+    assert "ValueError" in alerts[0]["context"]["error"] and "security_id A" in alerts[0]["context"]["error"]
+
+
+def test_new_split_conflict_is_not_hidden_by_a_stage_0_bonus_conflict_on_the_same_date(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+    monkeypatch.delenv("KAIROS_DAILY_ACTIONS", raising=False)
+    paths = _nightly_paths(tmp_path)
+    _stage0(paths, [
+        _observation("2026-10-21", SPLIT_SUBJECT, "original_or_unspecified"),
+        _observation("2026-10-21", BONUS_1_1_SUBJECT, "original_or_unspecified"),
+        _observation("2026-10-21", BONUS_1_2_SUBJECT, "original_or_unspecified"),
+    ])
     _ready(paths)
     panel_calls = _stub_cli_builds(monkeypatch)
     assert _signal(paths, tmp_path, "1", _fetch([], body=_nightly_body("21-Oct-2026", TWO_RUPEE_SUBJECT)))["status"] == "ok"
