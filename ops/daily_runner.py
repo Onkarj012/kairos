@@ -35,15 +35,17 @@ from ingest.calendar import parse_holiday_rows
 from ingest.daily_cash import CASH_URL_ROUTES, collect_daily_cash, request_directory_for_route, verify_retained_session
 from ingest.daily_panel import EXCLUDED_SESSIONS, PANEL_FILE, START, derived_root, replace_directory
 from models.daily_baselines import STRATEGIES, Candidate, cohort_by_month, rank_session, trading_sessions
+from ops import daily_actions
 from ops.alerts import send_alert
 from ops.daily_account import ACCOUNTS_DIR, PAPER_ACCOUNTS, AccountSpec, AccountView, DailyAccount
 from ops.daily_rules import HOLD_SESSIONS, AccountEvent, Bar, Intent, plan_session, settle_session
 from ops.halts import kill_switch_path
 from ops.kite_broker import KiteReader, dry_run_place
 from ops.notify import APPROVALS_URL, Notifier, NotifyError
-from ops.telegram import Button, Telegram, TelegramError, callback_chat, callback_data, parse_callback, read_offset, write_offset
+from ops.telegram import Button, Telegram, TelegramError, callback_chat, callback_data, parse_callback, read_env, read_offset, write_offset
 
 IST = ZoneInfo("Asia/Kolkata")
+ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 JOBS = ("place", "reconcile", "signal")
 WINDOWS = {
     "place": (time(8, 45), time(9, 5)),
@@ -607,13 +609,16 @@ class NseCash:
         return f"{result.status} {result.reason or ''}".strip()
 
 
-def build_live_data(paths: RunnerPaths, calendar: Calendar, through: date) -> None:
-    """Rewrite the live ledger, then rebuild the live panel and cohort from retained bytes."""
+def build_live_data(paths: RunnerPaths, calendar: Calendar, through: date, adjustments: Path | None = None) -> None:
+    """Rewrite the live ledger, then rebuild the live panel and cohort from retained bytes, with factors from adjustments when given."""
     from scripts.data import build_daily_panel, build_daily_universe
 
     write_live_ledger(paths, calendar, through)
+    panel_args = ["--ledger", str(paths.live_ledger), "--out", str(paths.live_panel_dir)]
+    if adjustments is not None:
+        panel_args += ["--adjustments", str(adjustments)]
     with redirect_stdout(sys.stderr):
-        build_daily_panel.main(["--ledger", str(paths.live_ledger), "--out", str(paths.live_panel_dir)])
+        build_daily_panel.main(panel_args)
         build_daily_universe.main([
             "--panel", str(paths.live_panel_dir), "--ledger", str(paths.live_ledger), "--out", str(paths.live_cohort_dir),
         ])
@@ -627,11 +632,13 @@ class Runner:
     now: datetime
     cash: CashSource | None = None
     calendar: Calendar | None = None
-    build: Callable[[RunnerPaths, Calendar, date], None] = build_live_data
+    build: Callable[[RunnerPaths, Calendar, date, Path | None], None] = build_live_data
     log: Callable[[str], None] = print
     telegram: Telegram | None = None
     mac: Notifier | None = None
     kite: KiteReader | None = None
+    env_file: Path = ENV_PATH
+    fetch_actions: daily_actions.Fetcher = daily_actions.request_range
 
     def notify(self, text: str, rows: list[list[Button]] | None = None) -> bool:
         """Send to every configured channel; a failing channel never stops the others. Return whether any went out."""
@@ -871,7 +878,7 @@ class Runner:
                 return {"status": "halted", "detail": detail}
             runs.waiting(job_id, slot, detail)
             return {"status": "waiting", "detail": detail}
-        self.build(self.paths, calendar, today)
+        self.build(self.paths, calendar, today, self._nightly_adjustments(today))
         market = load_market(self.paths, live=True, calendar=calendar)
         planned: dict[str, int] = {}
         for account, view in self.ready_accounts():
@@ -884,6 +891,17 @@ class Runner:
         fetched = [s.isoformat() for s in missing]
         runs.mark(job_id, "ok", json.dumps({"fetched": fetched, "planned": planned}, sort_keys=True))
         return {"status": "ok", "fetched": fetched, "planned": planned}
+
+    def _nightly_adjustments(self, today: date) -> Path | None:
+        """Merge tonight's NSE actions when KAIROS_DAILY_ACTIONS=1; any failure alerts and returns None, so the build keeps stage 0 factors."""
+        if not daily_actions.enabled(read_env(self.env_file)):
+            return None
+        try:
+            return daily_actions.merge_nightly(self.paths, today, self.fetch_actions)
+        except Exception as exc:
+            send_alert("warning", "nightly corporate actions failed", root=self.paths.runner, error=f"{type(exc).__name__}: {exc}")
+            self.log(f"nightly corporate actions failed: {type(exc).__name__}")
+            return None
 
     def post_intents(self) -> None:
         """Post each ready account's latest unsent intents with Approve and Reject buttons, once; failed posts retry next time."""

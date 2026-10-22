@@ -398,15 +398,15 @@ def _live_paths(tmp_path: Path) -> RunnerPaths:
 CALENDAR = Calendar(frozen={date(2026, 10, 19): "expected"}, holidays={2026: {date(2026, 10, 20): "holiday"}})
 
 
-def _build(paths: RunnerPaths, calendar: Calendar, through: date) -> None:
+def _build(paths: RunnerPaths, calendar: Calendar, through: date, adjustments: Path | None = None) -> None:
     """Write only the live ledger; the test panel and cohort are fixed."""
     write_live_ledger(paths, calendar, through)
 
 
 def _run(paths: RunnerPaths, job: str, session: date, at: str, cash: FakeCash | None = None) -> dict[str, object]:
-    """Run one job at an IST clock time on a session."""
+    """Run one job at an IST clock time on a session; the test root has no .env, so no nightly request."""
     now = datetime.fromisoformat(f"{session.isoformat()}T{at}").replace(tzinfo=IST)
-    runner = Runner(paths, now, cash=cash or FakeCash(set(LIVE)), calendar=CALENDAR, build=_build, log=lambda _m: None)
+    runner = Runner(paths, now, cash=cash or FakeCash(set(LIVE)), calendar=CALENDAR, build=_build, log=lambda _m: None, env_file=paths.root / ".env")
     return runner.run(job)
 
 
@@ -547,7 +547,7 @@ class FakeTelegram:
 def _telegram_run(paths: RunnerPaths, job: str, session: date, at: str, bot: FakeTelegram) -> dict[str, object]:
     """Run one job with a fake bot attached."""
     now = datetime.fromisoformat(f"{session.isoformat()}T{at}").replace(tzinfo=IST)
-    return Runner(paths, now, cash=FakeCash(set(LIVE)), calendar=CALENDAR, build=_build, log=lambda _m: None, telegram=bot).run(job)
+    return Runner(paths, now, cash=FakeCash(set(LIVE)), calendar=CALENDAR, build=_build, log=lambda _m: None, telegram=bot, env_file=paths.root / ".env").run(job)
 
 
 def test_signal_posts_each_accounts_intents_with_approve_and_reject_buttons(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
