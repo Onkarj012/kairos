@@ -79,6 +79,24 @@ def test_closed_trades_leave_out_open_positions_and_skipped_intents(tmp_path):
     assert ">B<" in skipped and ">A<" not in skipped
 
 
+def test_a_trade_rescaled_to_zero_shares_still_shows_as_closed():
+    import pandas as pd
+    from datetime import date
+    from serve.dashboard import AccountPage, render_account
+    from ops.daily_account import AccountView
+    from ops.daily_rules import TRADE_COLUMNS, new_state
+
+    row = dict.fromkeys(TRADE_COLUMNS, "")
+    row.update(signal_session=date(2025, 8, 4), security_id="RS", qty=0, entry_session=date(2025, 8, 5), entry_price=100.0,
+               exit_session=date(2025, 8, 8), exit_price=0.0, buy_costs=15.0, sell_costs=0.0, net_pnl=-1015.0, net_bps=-10000.0,
+               exit_reason="exit_band_open")
+    page = AccountPage(SPEC, "2025-08-04", "paper", "replay", AccountView(SPEC, new_state(50_000.0)),
+                       pd.DataFrame([row], columns=TRADE_COLUMNS), pd.DataFrame(), False, [])
+    body = render_account(page)
+    assert ">RS<" in body.split("<h2>Closed trades</h2>")[1].split("</section>")[0]
+    assert "No skipped intents." in body
+
+
 def test_account_api_returns_state_and_trades(tmp_path):
     _account(tmp_path)
     status, body = _get(create_app(accounts_root=tmp_path, runner_root=tmp_path / "runner"), f"/api/accounts/{SPEC.account_id}")
