@@ -60,6 +60,25 @@ def test_account_page_keeps_cleared_halts_in_history(tmp_path):
     assert "test_halt" in body and "checked the &lt;split&gt;" in body
 
 
+def test_closed_trades_leave_out_open_positions_and_skipped_intents(tmp_path):
+    from ops.daily_runner import advance, place
+    from ops.daily_account import DailyAccount
+
+    market = _market()
+    account = DailyAccount(tmp_path, SPEC)
+    account.open(session=SESSIONS[0].isoformat(), verdict="replay")
+    advance(account, account.view(), market, SESSIONS[0], plan=True)
+    place(account, account.view(), SESSIONS[1], SESSIONS[0])
+    advance(account, account.view(), market, SESSIONS[1], plan=False)  # A fills; B misses its entry band
+    status, body = _get(create_app(accounts_root=tmp_path, runner_root=tmp_path / "runner"), f"/accounts/{SPEC.account_id}")
+
+    closed = body.split("<h2>Closed trades</h2>")[1].split("</section>")[0]
+    skipped = body.split("<h2>Skipped intents</h2>")[1].split("</section>")[0]
+    assert status == 200
+    assert "No closed trades yet." in closed
+    assert ">B<" in skipped and ">A<" not in skipped
+
+
 def test_account_api_returns_state_and_trades(tmp_path):
     _account(tmp_path)
     status, body = _get(create_app(accounts_root=tmp_path, runner_root=tmp_path / "runner"), f"/api/accounts/{SPEC.account_id}")

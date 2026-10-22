@@ -122,9 +122,9 @@ class DailyAccount:
             "stage1_verdict": verdict,
         }))
 
-    def view(self) -> AccountView:
-        """Fold the log into account state, leaving out events of incomplete steps."""
-        events = read_events(self.path)
+    def view(self, events: list[ResearchEvent] | None = None) -> AccountView:
+        """Fold the log, or an already-read copy of it, into account state, leaving out events of incomplete steps."""
+        events = read_events(self.path) if events is None else events
         if not events or events[0].event_type != "ACCOUNT_OPENED":
             raise ValueError(f"{self.spec.account_id}: log must start with ACCOUNT_OPENED")
         settled = {str(e.payload["session"]) for e in events if e.event_type == "RECONCILED"}

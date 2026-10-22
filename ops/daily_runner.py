@@ -37,7 +37,7 @@ from ingest.daily_panel import EXCLUDED_SESSIONS, PANEL_FILE, START, derived_roo
 from models.daily_baselines import STRATEGIES, Candidate, cohort_by_month, rank_session, trading_sessions
 from ops.alerts import send_alert
 from ops.daily_account import ACCOUNTS_DIR, PAPER_ACCOUNTS, AccountSpec, AccountView, DailyAccount
-from ops.daily_rules import HOLD_SESSIONS, AccountEvent, Bar, plan_session, settle_session
+from ops.daily_rules import HOLD_SESSIONS, AccountEvent, Bar, Intent, plan_session, settle_session
 from ops.halts import kill_switch_path
 from ops.kite_broker import KiteReader, dry_run_place
 from ops.telegram import Button, Telegram, TelegramError, callback_chat, callback_data, parse_callback, read_offset, write_offset
@@ -60,7 +60,6 @@ CALL_ATTEMPTS = 3
 NIGHT_REQUEST_BUDGET = 6
 LOSS_LIMIT_TOTAL = 0.10
 LOSS_LIMIT_MONTH = 0.05
-UPDATE_BATCHES = 50
 MOVE_GUARD = 0.35
 REPLAY_FIRST_SIGNAL = date(2025, 8, 28)
 REPLAY_LAST_SESSION = date(2025, 9, 30)
@@ -127,6 +126,10 @@ class RunnerPaths:
     @property
     def telegram_offset(self) -> Path:
         return self.runner / "runner-v1/telegram-offset.json"
+
+    @property
+    def telegram_intents_posted(self) -> Path:
+        return self.runner / "runner-v1/telegram-intents-posted.json"
 
     @property
     def telegram_halts_posted(self) -> Path:
@@ -700,6 +703,9 @@ class Runner:
             raise ValueError(f"unknown job {job}")
         result = self._run(job)
         self.post_halts()
+        if job == "signal":
+            # Later signal slots end as already_done; this still retries an intent post that failed.
+            self.post_intents()
         return result
 
     def _run(self, job: str) -> dict[str, object]:
@@ -752,8 +758,8 @@ class Runner:
             return 0
         ready = {account.spec.account_id: account for account, _view in self.ready_accounts()}
         recorded = 0
-        # Telegram returns at most 100 updates a call; read every batch so no rejection is left behind before sending.
-        for _batch in range(UPDATE_BATCHES):
+        # Telegram returns at most 100 updates a call; read every page so no rejection is left behind before sending.
+        while True:
             try:
                 updates = self.telegram.updates(read_offset(self.paths.telegram_offset))
             except TelegramError as exc:
@@ -772,7 +778,10 @@ class Runner:
                     self.telegram.answer(press.callback_id, reply)
                 except TelegramError as exc:
                     self.log(f"telegram answer failed: {exc}")
-            write_offset(self.paths.telegram_offset, max(int(str(u["update_id"])) for u in updates) + 1)
+            offset = max(int(str(u["update_id"])) for u in updates) + 1
+            if offset <= (read_offset(self.paths.telegram_offset) or 0):
+                break  # the offset stopped moving; never loop on a misbehaving API
+            write_offset(self.paths.telegram_offset, offset)
         return recorded
 
     def _record_answer(self, account: DailyAccount | None, account_id: str, intent_id: str, decision: str, update_id: int,
@@ -848,31 +857,39 @@ class Runner:
             planned[account.spec.account_id] = sum(1 for i in view.state.intents if i.signal_session == today.isoformat())
         fetched = [s.isoformat() for s in missing]
         runs.mark(job_id, "ok", json.dumps({"fetched": fetched, "planned": planned}, sort_keys=True))
-        if self.telegram is not None:
-            for account, _view in self.ready_accounts():
-                self.post_intents(account, today, calendar)
         return {"status": "ok", "fetched": fetched, "planned": planned}
 
-    def post_intents(self, account: DailyAccount, today: date, calendar: Calendar) -> None:
-        """Post an account's new intents with Approve and Reject buttons."""
-        view = account.view()
-        intents = [i for i in view.state.intents if i.signal_session == today.isoformat()]
-        if not intents:
+    def post_intents(self) -> None:
+        """Post each ready account's latest unsent intents with Approve and Reject buttons, once; failed posts retry next time."""
+        if self.telegram is None:
             return
-        spec = account.spec
-        silence = "Silence sends them (paper, auto)." if spec.approval == "auto" else "Silence skips them."
-        entry = calendar.sessions_after(today, 1)[0].isoformat()
-        lines = [f"{spec.account_id}: {len(intents)} buy intent(s) for the {entry} open", f"{spec.strategy}, signal {today.isoformat()}"]
-        rows: list[list[Button]] = []
-        for number, intent in enumerate(intents, 1):
-            lines.append(f"{number}. {intent.security_id} x{intent.qty}, about ₹{intent.reserved:,.0f} at the {intent.close_t:,.2f} close")
-            approve, reject = callback_data("a", spec.account_id, intent.intent_id), callback_data("r", spec.account_id, intent.intent_id)
-            if approve and reject:
-                rows.append([Button(f"Approve {intent.security_id}", approve), Button(f"Reject {intent.security_id}", reject)])
-            else:
-                lines.append(f"   (id too long for buttons; {intent.security_id} follows the {spec.approval} setting)")
-        lines.append(f"Answer before 08:45. {silence}")
-        self.notify("\n".join(lines), rows)
+        path = self.paths.telegram_intents_posted
+        posted = set(json.loads(path.read_text(encoding="utf-8"))) if path.exists() else set()
+        for account, view in self.ready_accounts():
+            unsent = [i for i in view.state.intents if not i.sent]
+            if not unsent:
+                continue
+            signal = max(i.signal_session for i in unsent)
+            key = f"{account.spec.account_id}|{signal}"
+            if key not in posted and self.notify(*intent_message(account.spec, signal, [i for i in unsent if i.signal_session == signal])):
+                posted.add(key)
+                _write_atomic(path, (json.dumps(sorted(posted), indent=1) + "\n").encode("utf-8"))
+
+
+def intent_message(spec: AccountSpec, signal: str, intents: list[Intent]) -> tuple[str, list[list[Button]]]:
+    """Return the intent message text and its Approve and Reject buttons."""
+    silence = "Silence sends them (paper, auto)." if spec.approval == "auto" else "Silence skips them."
+    lines = [f"{spec.account_id}: {len(intents)} buy intent(s) for the next session's open", f"{spec.strategy}, signal {signal}"]
+    rows: list[list[Button]] = []
+    for number, intent in enumerate(intents, 1):
+        lines.append(f"{number}. {intent.security_id} x{intent.qty}, about ₹{intent.reserved:,.0f} at the {intent.close_t:,.2f} close")
+        approve, reject = callback_data("a", spec.account_id, intent.intent_id), callback_data("r", spec.account_id, intent.intent_id)
+        if approve and reject:
+            rows.append([Button(f"Approve {intent.security_id}", approve), Button(f"Reject {intent.security_id}", reject)])
+        else:
+            lines.append(f"   (id too long for buttons; {intent.security_id} follows the {spec.approval} setting)")
+    lines.append(f"Answer before 08:45. {silence}")
+    return "\n".join(lines), rows
 
 
 def start(paths: RunnerPaths, now: datetime, note: str, calendar: Calendar | None = None) -> dict[str, str]:

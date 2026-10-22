@@ -499,11 +499,23 @@ def test_signal_posts_each_accounts_intents_with_approve_and_reject_buttons(tmp_
     _telegram_run(paths, "signal", LIVE[0], "19:35", bot)
     assert len(bot.sent) == len(PAPER_ACCOUNTS)
     text, rows = bot.sent[0]
-    assert "for the 2026-10-22 open" in text and "Silence sends them" in text
+    assert "signal 2026-10-21" in text and "Silence sends them" in text
     assert [[b.data for b in row] for row in rows] == [
         ["a:paper-reversal_5d-50k:2026-10-21:A", "r:paper-reversal_5d-50k:2026-10-21:A"],
         ["a:paper-reversal_5d-50k:2026-10-21:B", "r:paper-reversal_5d-50k:2026-10-21:B"],
     ]
+
+
+def test_a_failed_intent_post_is_retried_by_a_later_signal_slot_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+    paths = _live_paths(tmp_path)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    _run(paths, "reconcile", LIVE[0], "18:50")
+    assert _telegram_run(paths, "signal", LIVE[0], "19:35", FakeTelegram(fail=True))["status"] == "ok"
+    bot = FakeTelegram()
+    assert _telegram_run(paths, "signal", LIVE[0], "20:16", bot)["status"] == "already_done"
+    _telegram_run(paths, "signal", LIVE[0], "21:01", bot)
+    assert len(bot.sent) == len(PAPER_ACCOUNTS)
 
 
 def test_place_records_answers_and_sends_only_unrejected_intents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
