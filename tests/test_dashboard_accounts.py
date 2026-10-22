@@ -45,8 +45,8 @@ def test_account_page_shows_halt_trade_costs_and_svg(tmp_path):
 
     assert status == 200
     assert "test_halt" in body
-    assert "buy_costs" in body
-    assert "sell_costs" in body
+    assert "buy costs" in body
+    assert "sell costs" in body
     assert "<svg" in body
 
 
@@ -56,9 +56,9 @@ def test_account_api_returns_state_and_trades(tmp_path):
 
     assert status == 200
     payload = json.loads(body)
-    assert payload["state"]["cash"] >= 0
-    assert "equity" in payload["state"]
-    assert payload["trades"]
+    assert payload["cash"] >= 0
+    assert payload["equity"] > 0
+    assert payload["trades"][0]["buy_costs"] > 0
 
 
 def test_unknown_account_is_404(tmp_path):
