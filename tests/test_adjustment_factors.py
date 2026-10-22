@@ -115,6 +115,23 @@ def test_ambiguous_factors_are_refused_and_adjustment_build_writes_review(tmp_pa
     assert pd.read_json(out / "summary.json")["events_applied"].iloc[0] == 0
 
 
+def test_revision_replaces_original_for_same_security_ex_date_and_kind() -> None:
+    """A revised ratio applies alone; the original it replaces goes to review."""
+    observations = pd.DataFrame(
+        [
+            {"security_id": "REV", "symbol": "REV", "ex_date": "2024-01-02", "subject": "Bonus 1:1", "revision_status": "original_or_unspecified"},
+            {"security_id": "REV", "symbol": "REV", "ex_date": "2024-01-02", "subject": "Bonus 2:1 - Revised", "revision_status": "revised"},
+        ]
+    )
+    panel = pd.DataFrame(_panel("REV", [10.0] * 4, [10.0] * 4))
+
+    events, review = build_events(observations, panel)
+
+    assert events["kind"].tolist() == ["bonus"]
+    assert events["factor"].iloc[0] == pytest.approx(1 / 3)
+    assert review[["security_id", "reason"]].values.tolist() == [["REV", "superseded_by_revision"]]
+
+
 def _panel(security_id: str, closes: list[float], prev_closes: list[float]) -> list[dict[str, object]]:
     """Four sessions of one security with the given raw closes and prev_closes."""
     return [
