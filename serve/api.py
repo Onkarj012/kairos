@@ -40,10 +40,31 @@ def _read_evidence(root: str | Path | None, token: str) -> dict:
     return {"found": False, "token": token}
 
 
-def create_app(recommendations=None, *args, root=None, recommendations_path=None, **kwargs):
-    from fastapi import FastAPI
+def create_app(recommendations=None, *args, root=None, recommendations_path=None,
+               accounts_root: Path | None = None, runner_root: Path | None = None, **kwargs):
+    from fastapi import FastAPI, HTTPException
+    from fastapi.responses import HTMLResponse
+
+    from ops.daily_account import PAPER_ACCOUNTS
+    from serve.dashboard import AccountPage, account_json, load_account, render_account, render_accounts
+
     app = FastAPI(title="Kairos")
     static_data = list(recommendations or [])
+
+    def roots() -> tuple[Path, Path]:
+        """Return the accounts and runner roots, defaulting to the configured derived-data root."""
+        from ops.daily_runner import default_paths
+
+        paths = default_paths()
+        return Path(accounts_root or paths.accounts), Path(runner_root or paths.runner)
+
+    def page_for(account_id: str) -> AccountPage:
+        """Load one opened account or answer 404."""
+        spec = next((s for s in PAPER_ACCOUNTS if s.account_id == account_id), None)
+        page = load_account(*roots(), spec) if spec else None
+        if page is None:
+            raise HTTPException(status_code=404, detail="unknown or unopened account")
+        return page
 
     def current_recommendations():
         if recommendations_path is not None or root is not None:
@@ -67,5 +88,19 @@ def create_app(recommendations=None, *args, root=None, recommendations_path=None
     def evidence(token: str):
         payload = _read_evidence(root, token)
         return payload
+
+    @app.get("/accounts", response_class=HTMLResponse)
+    def list_accounts():
+        accounts, runner = roots()
+        pages = {s.account_id: page for s in PAPER_ACCOUNTS if (page := load_account(accounts, runner, s)) is not None}
+        return render_accounts(list(PAPER_ACCOUNTS), pages)
+
+    @app.get("/accounts/{account_id}", response_class=HTMLResponse)
+    def show_account(account_id: str):
+        return render_account(page_for(account_id))
+
+    @app.get("/api/accounts/{account_id}")
+    def get_account(account_id: str):
+        return account_json(page_for(account_id))
 
     return app

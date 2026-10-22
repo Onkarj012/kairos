@@ -7,12 +7,15 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+REPO = Path(__file__).resolve().parents[1]
+
 # Keep direct-file execution equivalent to `python -m scripts.run_daily`.
 if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(REPO))
 
 from ops.alerts import send_alert
 from ops.daily_runner import IST, JOBS, Runner, clear, default_paths, now_ist, replay_check, start, status
+from ops.telegram import TelegramError, load_bot
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -28,6 +31,7 @@ def _parser() -> argparse.ArgumentParser:
     resume.add_argument("--note", required=True)
     resume.add_argument("--account", help="clear one account only")
     commands.add_parser("status", help="print each account's state")
+    commands.add_parser("ping", help="send a test message to the configured Telegram chat")
     check = commands.add_parser("replay", help="replay 20 dev sessions and compare with run_backtest")
     check.add_argument("--out", type=Path, default=default_paths().runner / "replay-v1")
     return parser
@@ -38,12 +42,16 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     paths = default_paths()
     now = datetime.fromisoformat(args.now).replace(tzinfo=IST) if args.now else now_ist()
+    bot = load_bot(REPO / ".env")
     if args.command in JOBS:
+        runner = Runner(paths, now, telegram=bot)
         try:
-            result: object = Runner(paths, now).run(args.command)
+            result: object = runner.run(args.command)
         except Exception as exc:
             # A crash records no run marker, so the next job halts; the alert says why.
             send_alert("error", f"daily runner {args.command} crashed", root=paths.runner, error=f"{type(exc).__name__}: {exc}")
+            runner.post_halts()
+            runner.notify(f"Daily runner {args.command} crashed: {type(exc).__name__}. The next job halts with missed_run.")
             raise
         code = 1 if isinstance(result, dict) and result.get("status") == "halted" else 0
     elif args.command == "start":
@@ -52,6 +60,15 @@ def main(argv: list[str] | None = None) -> int:
         result, code = clear(paths, now, args.note, args.account), 0
     elif args.command == "status":
         result, code = status(paths), 0
+    elif args.command == "ping":
+        if bot is None:
+            result, code = {"telegram": "not configured: set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env"}, 1
+        else:
+            try:
+                bot.send("Kairos daily runner: Telegram is connected.")
+                result, code = {"telegram": "sent"}, 0
+            except TelegramError as exc:
+                result, code = {"telegram": str(exc)}, 1
     else:
         result = replay_check(paths, args.out)
         code = 0 if result["match"] else 1

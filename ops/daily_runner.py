@@ -37,8 +37,9 @@ from ingest.daily_panel import EXCLUDED_SESSIONS, PANEL_FILE, START, derived_roo
 from models.daily_baselines import STRATEGIES, Candidate, cohort_by_month, rank_session, trading_sessions
 from ops.alerts import send_alert
 from ops.daily_account import ACCOUNTS_DIR, PAPER_ACCOUNTS, AccountSpec, AccountView, DailyAccount
-from ops.daily_rules import HOLD_SESSIONS, AccountEvent, Bar, plan_session, settle_session
+from ops.daily_rules import HOLD_SESSIONS, AccountEvent, Bar, Intent, plan_session, settle_session
 from ops.halts import kill_switch_path
+from ops.telegram import Button, Telegram, TelegramError, callback_chat, callback_data, parse_callback, read_offset, write_offset
 
 IST = ZoneInfo("Asia/Kolkata")
 JOBS = ("place", "reconcile", "signal")
@@ -120,6 +121,18 @@ class RunnerPaths:
     @property
     def runs(self) -> Path:
         return self.runner / "runner-v1/runs.jsonl"
+
+    @property
+    def telegram_offset(self) -> Path:
+        return self.runner / "runner-v1/telegram-offset.json"
+
+    @property
+    def telegram_intents_posted(self) -> Path:
+        return self.runner / "runner-v1/telegram-intents-posted.json"
+
+    @property
+    def telegram_halts_posted(self) -> Path:
+        return self.runner / "runner-v1/telegram-halts-posted.json"
 
     @property
     def research_ledger(self) -> Path:
@@ -453,12 +466,18 @@ def advance(account: DailyAccount, view: AccountView, market: Market, through: d
     return view
 
 
+def _sendable(view: AccountView, intent_id: str) -> bool:
+    """Return whether an intent may go out: never once rejected, and only once approved when the account requires it."""
+    decision = view.decisions.get(intent_id)
+    return decision == "approved" if view.spec.approval == "required" else decision != "rejected"
+
+
 def place(account: DailyAccount, view: AccountView, session: date, signal_session: date) -> int:
-    """Mark the previous signal's intents as sent; paper sends no real order."""
+    """Mark the previous signal's sendable intents as sent; paper sends no real order, and the rest expire at settle."""
     events = [
         AccountEvent("ORDER_SENT", session.isoformat(), {"intent_id": i.intent_id, "security_id": i.security_id, "qty": i.qty, "mode": "paper"})
         for i in view.state.intents
-        if not i.sent and i.signal_session == signal_session.isoformat()
+        if not i.sent and i.signal_session == signal_session.isoformat() and _sendable(view, i.intent_id)
     ]
     account.append(events)
     return len(events)
@@ -589,6 +608,52 @@ class Runner:
     calendar: Calendar | None = None
     build: Callable[[RunnerPaths, Calendar, date], None] = build_live_data
     log: Callable[[str], None] = print
+    telegram: Telegram | None = None
+
+    def notify(self, text: str, rows: list[list[Button]] | None = None) -> bool:
+        """Post to Telegram when a bot is configured; return whether it went out. A failure never stops the job."""
+        if self.telegram is None:
+            return False
+        try:
+            self.telegram.send(text, rows)
+        except TelegramError as exc:
+            send_alert("warning", "telegram post failed", root=self.paths.runner, error=str(exc))
+            self.log(f"telegram post failed: {exc}")
+            return False
+        return True
+
+    def open_halts(self) -> set[tuple[str, str, str, str, int]]:
+        """Return every open halt as (account, session, reason, detail, clears before it)."""
+        found: set[tuple[str, str, str, str, int]] = set()
+        for account in self.accounts():
+            if not account.exists():
+                continue
+            try:
+                view = account.view()
+            except (LedgerError, ValueError):
+                continue
+            found |= {(account.spec.account_id, str(h["session"]), str(h["reason"]), str(h["detail"]), view.clears) for h in view.halts}
+        return found
+
+    def post_halts(self) -> None:
+        """Post every open halt not yet posted, one message per reason and session; unposted ones retry on the next job."""
+        if self.telegram is None:
+            return
+        path = self.paths.telegram_halts_posted
+        posted = set(json.loads(path.read_text(encoding="utf-8"))) if path.exists() else set()
+        grouped: dict[tuple[str, str, str], list[tuple[str, str]]] = {}
+        for account_id, session, reason, detail, clears in sorted(self.open_halts()):
+            key = f"{account_id}|{session}|{reason}|{clears}"
+            if key not in posted:
+                grouped.setdefault((session, reason, detail), []).append((account_id, key))
+        for (session, reason, detail), members in grouped.items():
+            sent = self.notify(
+                f"HALT {reason} on {session}\n{detail}\nAccounts: {', '.join(a for a, _k in members)}\n"
+                "New intents stop until you check and run: uv run python scripts/run_daily.py clear --note \"...\""
+            )
+            if sent:
+                posted |= {k for _a, k in members}
+                _write_atomic(path, (json.dumps(sorted(posted), indent=1) + "\n").encode("utf-8"))
 
     def accounts(self) -> list[DailyAccount]:
         """Return the four paper accounts."""
@@ -627,9 +692,18 @@ class Runner:
         return ready
 
     def run(self, job: str) -> dict[str, object]:
-        """Run one job for today's session; return a short status."""
+        """Run one job for today's session, then post any halt it opened; return a short status."""
         if job not in JOBS:
             raise ValueError(f"unknown job {job}")
+        result = self._run(job)
+        self.post_halts()
+        if job == "signal":
+            # Later signal slots end as already_done; this still retries an intent post that failed.
+            self.post_intents()
+        return result
+
+    def _run(self, job: str) -> dict[str, object]:
+        """Run one job for today's session; return a short status."""
         today = self.now.date()
         runs = RunLog(self.paths.runs)
         try:
@@ -658,11 +732,62 @@ class Runner:
         return {"job": job, "session": today.isoformat(), **handler(today, calendar, runs, job_id)}
 
     def _place(self, today: date, calendar: Calendar, runs: RunLog, job_id: str) -> dict[str, object]:
-        """Mark the last signal's intents as sent for each ready account."""
+        """Record Telegram answers, then mark the last signal's sendable intents as sent for each ready account."""
         signal_session = calendar.previous_session(today)
-        sent = {account.spec.account_id: place(account, view, today, signal_session) for account, view in self.ready_accounts()}
-        runs.mark(job_id, "ok", json.dumps({"sent": sent}, sort_keys=True))
-        return {"status": "ok", "sent": sent}
+        decided = self.read_answers(today, signal_session)
+        sent = {account.spec.account_id: place(account, account.view(), today, signal_session) for account, _view in self.ready_accounts()}
+        runs.mark(job_id, "ok", json.dumps({"decided": decided, "sent": sent}, sort_keys=True))
+        return {"status": "ok", "decided": decided, "sent": sent}
+
+    def read_answers(self, today: date, signal_session: date) -> int:
+        """Record each Approve or Reject press on the last signal's open intents; return how many were recorded."""
+        if self.telegram is None:
+            self.log("telegram not configured; intents follow each account's approval setting")
+            return 0
+        ready = {account.spec.account_id: account for account, _view in self.ready_accounts()}
+        recorded = 0
+        # Telegram returns at most 100 updates a call; read every page so no rejection is left behind before sending.
+        while True:
+            try:
+                updates = self.telegram.updates(read_offset(self.paths.telegram_offset))
+            except TelegramError as exc:
+                send_alert("warning", "telegram read failed", root=self.paths.runner, error=str(exc))
+                self.log(f"telegram read failed: {exc}")
+                break
+            if not updates:
+                break
+            for update in updates:
+                press = parse_callback(update)
+                if press is None or callback_chat(update) != str(self.telegram.chat_id):
+                    continue
+                reply = self._record_answer(ready.get(press.account_id), press.account_id, press.intent_id, press.decision, press.update_id, today, signal_session)
+                recorded += reply.startswith(("Approved", "Rejected"))
+                try:
+                    self.telegram.answer(press.callback_id, reply)
+                except TelegramError as exc:
+                    self.log(f"telegram answer failed: {exc}")
+            offset = max(int(str(u["update_id"])) for u in updates) + 1
+            if offset <= (read_offset(self.paths.telegram_offset) or 0):
+                break  # the offset stopped moving; never loop on a misbehaving API
+            write_offset(self.paths.telegram_offset, offset)
+        return recorded
+
+    def _record_answer(self, account: DailyAccount | None, account_id: str, intent_id: str, decision: str, update_id: int,
+                       today: date, signal_session: date) -> str:
+        """Write one answer when it is still in time; return the reply shown on the button."""
+        if account is None:
+            return f"{account_id} is halted, kill-switched or unknown; nothing changed"
+        view = account.view()
+        intent = next((i for i in view.state.intents if i.intent_id == intent_id), None)
+        if intent is None or intent.sent or intent.signal_session != signal_session.isoformat():
+            return f"Too late for {intent_id}; nothing changed"
+        if intent_id in view.decisions:
+            return f"Already {view.decisions[intent_id]}: {intent.security_id}"
+        kind = "INTENT_APPROVED" if decision == "approved" else "INTENT_REJECTED"
+        account.append([AccountEvent(kind, today.isoformat(), {
+            "intent_id": intent_id, "security_id": intent.security_id, "via": "telegram", "update_id": update_id,
+        })])
+        return f"{decision.capitalize()} {intent.security_id} for the {today.isoformat()} open"
 
     def _reconcile(self, today: date, calendar: Calendar, runs: RunLog, job_id: str) -> dict[str, object]:
         """Verify account logs and settle today when the live panel already has it."""
@@ -722,6 +847,38 @@ class Runner:
         runs.mark(job_id, "ok", json.dumps({"fetched": fetched, "planned": planned}, sort_keys=True))
         return {"status": "ok", "fetched": fetched, "planned": planned}
 
+    def post_intents(self) -> None:
+        """Post each ready account's latest unsent intents with Approve and Reject buttons, once; failed posts retry next time."""
+        if self.telegram is None:
+            return
+        path = self.paths.telegram_intents_posted
+        posted = set(json.loads(path.read_text(encoding="utf-8"))) if path.exists() else set()
+        for account, view in self.ready_accounts():
+            unsent = [i for i in view.state.intents if not i.sent]
+            if not unsent:
+                continue
+            signal = max(i.signal_session for i in unsent)
+            key = f"{account.spec.account_id}|{signal}"
+            if key not in posted and self.notify(*intent_message(account.spec, signal, [i for i in unsent if i.signal_session == signal])):
+                posted.add(key)
+                _write_atomic(path, (json.dumps(sorted(posted), indent=1) + "\n").encode("utf-8"))
+
+
+def intent_message(spec: AccountSpec, signal: str, intents: list[Intent]) -> tuple[str, list[list[Button]]]:
+    """Return the intent message text and its Approve and Reject buttons."""
+    silence = "Silence sends them (paper, auto)." if spec.approval == "auto" else "Silence skips them."
+    lines = [f"{spec.account_id}: {len(intents)} buy intent(s) for the next session's open", f"{spec.strategy}, signal {signal}"]
+    rows: list[list[Button]] = []
+    for number, intent in enumerate(intents, 1):
+        lines.append(f"{number}. {intent.security_id} x{intent.qty}, about ₹{intent.reserved:,.0f} at the {intent.close_t:,.2f} close")
+        approve, reject = callback_data("a", spec.account_id, intent.intent_id), callback_data("r", spec.account_id, intent.intent_id)
+        if approve and reject:
+            rows.append([Button(f"Approve {intent.security_id}", approve), Button(f"Reject {intent.security_id}", reject)])
+        else:
+            lines.append(f"   (id too long for buttons; {intent.security_id} follows the {spec.approval} setting)")
+    lines.append(f"Answer before 08:45. {silence}")
+    return "\n".join(lines), rows
+
 
 def start(paths: RunnerPaths, now: datetime, note: str, calendar: Calendar | None = None) -> dict[str, str]:
     """Open any missing paper account at the next session and record a manual recovery marker."""
@@ -769,7 +926,8 @@ def status(paths: RunnerPaths) -> list[dict[str, object]]:
             "cash": round(view.state.cash, 2),
             "equity": round(view.state.equity, 2),
             "holdings": [{"security_id": h.security_id, "qty": h.qty, "exit_due": h.exit_due} for h in view.state.holdings],
-            "open_intents": [i.intent_id for i in view.state.intents],
+            "open_intents": {i.intent_id: view.decisions.get(i.intent_id, "no answer") for i in view.state.intents},
+            "approval": account.spec.approval,
             "halts": view.halts,
             "kill_switch": kill_switch_path(paths.runner, spec.account_id).exists(),
         })

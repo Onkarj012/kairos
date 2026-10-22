@@ -40,6 +40,7 @@ class AccountSpec:
     account_id: str
     strategy: str
     capital: int
+    approval: str = "auto"  # auto: silence sends; required: only approved intents send
 
 
 PAPER_ACCOUNTS = tuple(
@@ -58,6 +59,7 @@ class AccountView:
     engine_events: list[AccountEvent] = field(default_factory=list)
     settled: set[str] = field(default_factory=set)
     signalled: set[str] = field(default_factory=set)
+    decisions: dict[str, str] = field(default_factory=dict)
     halts: list[dict[str, object]] = field(default_factory=list)
     halt_history: dict[tuple[str, str], set[str]] = field(default_factory=dict)
     clears: int = 0
@@ -71,7 +73,7 @@ class AccountView:
 def _event_key(event: AccountEvent) -> str:
     """Return the deterministic id suffix that makes a re-run append idempotent."""
     data = event.data
-    if event.kind in {"INTENT_CREATED", "ORDER_SENT", "INTENT_EXPIRED", "UNFILLED", "POSITION_OPENED"}:
+    if event.kind in {"INTENT_CREATED", "INTENT_APPROVED", "INTENT_REJECTED", "ORDER_SENT", "INTENT_EXPIRED", "UNFILLED", "POSITION_OPENED"}:
         return str(data["intent_id"])
     if event.kind in {"EXIT_PENDING", "POSITION_CLOSED"}:
         return f"{data['entry_session']}:{data['security_id']}"
@@ -86,7 +88,7 @@ def _job_id(event: AccountEvent) -> str:
         return f"settle:{event.session}"
     if event.kind in PLAN_EVENTS:
         return f"signal:{event.session}"
-    if event.kind == "ORDER_SENT":
+    if event.kind in {"ORDER_SENT", "INTENT_APPROVED", "INTENT_REJECTED"}:
         return f"place:{event.session}"
     return f"account:{event.session}"
 
@@ -120,9 +122,9 @@ class DailyAccount:
             "stage1_verdict": verdict,
         }))
 
-    def view(self) -> AccountView:
-        """Fold the log into account state, leaving out events of incomplete steps."""
-        events = read_events(self.path)
+    def view(self, events: list[ResearchEvent] | None = None) -> AccountView:
+        """Fold the log, or an already-read copy of it, into account state, leaving out events of incomplete steps."""
+        events = read_events(self.path) if events is None else events
         if not events or events[0].event_type != "ACCOUNT_OPENED":
             raise ValueError(f"{self.spec.account_id}: log must start with ACCOUNT_OPENED")
         settled = {str(e.payload["session"]) for e in events if e.event_type == "RECONCILED"}
@@ -137,6 +139,8 @@ class DailyAccount:
             if event.kind in ENGINE_EVENTS:
                 apply_event(view.state, event)
                 view.engine_events.append(event)
+            elif event.kind in {"INTENT_APPROVED", "INTENT_REJECTED"}:
+                view.decisions.setdefault(str(event.data["intent_id"]), "approved" if event.kind == "INTENT_APPROVED" else "rejected")
             elif event.kind == "HALTED":
                 view.halts.append({"session": event.session, **event.data})
                 key = (event.session, str(event.data["reason"]))
