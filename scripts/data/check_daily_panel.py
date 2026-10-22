@@ -224,8 +224,8 @@ def _adjustments(paths: dict[str, Path]) -> Section:
         + "\nMove review:\n\n"
         + _table(list(moves.columns), moves.values.tolist())
     )
-    accounting = corporate_actions["request_accounting"]
-    incomplete = corporate_actions["run_status"] == "aborted" or accounting["incomplete"] or accounting["not_requested"]
+    accounting = corporate_actions.get("request_accounting", {})
+    incomplete = corporate_actions["run_status"] == "aborted" or accounting.get("incomplete", 0) or accounting.get("not_requested", 0)
     status = "fail" if incomplete else "review" if len(failures) or len(purposes) or len(moves) else "pass"
     return Section("adjustments", "Adjustment review", status, data, body)
 

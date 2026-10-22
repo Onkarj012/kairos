@@ -176,6 +176,10 @@ def test_adjustment_status_fails_incomplete_fetch_and_reviews_failed_symbols(tmp
     assert _adjustments(paths).status == "fail"
     write_manifest("finished", 1)
     assert _adjustments(paths).status == "fail"
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"run_status": "finished", "request_accounting": {"accepted": 545}}), encoding="utf-8"
+    )
+    assert _adjustments(paths).status == "pass"
     write_manifest("finished", 0)
     write_csv("failures.csv", ["symbol"], [["SYM1"]])
     assert _adjustments(paths).status == "review"
