@@ -91,6 +91,13 @@ def test_dry_run_logs_current_buys_due_sells_holdings_fallback_and_rewrite(tmp_p
     assert fallback_sell["payload"]["quantity"] == 5 and fallback_sell["holdings_qty"] is None
 
 
+def test_dry_run_sells_a_holding_still_open_past_its_exit_day(tmp_path: Path) -> None:
+    accounts_root = tmp_path / "accounts"
+    _account_with_events(accounts_root, 0, "2026-10-23")
+    rows = dry_run_place(accounts_root, tmp_path / "dry", date(2026, 10, 26), None)
+    assert [(r["payload"]["transaction_type"], r["payload"]["tradingsymbol"]) for r in rows] == [("SELL", "HELD")]
+
+
 def test_dry_run_leaves_out_accounts_the_place_job_skipped(tmp_path: Path) -> None:
     session = "2026-10-23"
     accounts_root = tmp_path / "accounts"

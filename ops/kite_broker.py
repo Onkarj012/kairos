@@ -118,7 +118,8 @@ def dry_run_place(accounts_root: Path, log_dir: Path, session: date, reader: Kit
             })
         state = DailyAccount(accounts_root, spec).view().state
         for holding in state.holdings:
-            if holding.exit_due != day:
+            # A holding still open past its exit day had no price to exit on; it sells at the next open, so it is logged again.
+            if holding.exit_due > day:
                 continue
             quantity = holdings.get(holding.security_id, 0) if holdings is not None else 0
             qty = quantity if quantity > 0 else holding.qty
