@@ -10,7 +10,7 @@ import pandas as pd
 
 from evidence.research_ledger import read_events
 from ops.daily_account import AccountSpec, AccountView, DailyAccount
-from ops.daily_rules import TRADE_COLUMNS
+from ops.daily_rules import TRADE_COLUMNS, equity_frame, trades_frame
 from ops.halts import kill_switch_path
 
 STYLE = """<style>
@@ -57,7 +57,9 @@ def load_account(accounts_root: Path, runner_root: Path, spec: AccountSpec) -> A
     account = DailyAccount(accounts_root, spec)
     if not account.exists():
         return None
+    # One read of the log, so every section shows the same moment even while a job appends.
     events = read_events(account.path)
+    view = account.view(events)
     opening = events[0].payload
     halt_log = [
         {"session": str(e.payload["session"]), "event": "halted", "reason": str(e.payload["reason"]), "detail": str(e.payload["detail"])}
@@ -70,9 +72,9 @@ def load_account(accounts_root: Path, runner_root: Path, spec: AccountSpec) -> A
         opened=str(opening.get("session", "")),
         mode=str(opening.get("mode", "paper")),
         verdict=str(opening.get("stage1_verdict", "unknown")),
-        view=account.view(),
-        trades=account.trades(),
-        equity=account.equity(),
+        view=view,
+        trades=trades_frame(view.engine_events),
+        equity=equity_frame(view.engine_events),
         kill_switch=kill_switch_path(runner_root, spec.account_id).exists(),
         halt_log=halt_log,
     )
@@ -213,8 +215,16 @@ def render_account(page: AccountPage) -> str:
         "No open intents.",
     )
     numeric = {"qty", "entry_price", "exit_price", "buy_costs", "sell_costs", "net_pnl", "net_bps"}
+    filled = page.trades["qty"] > 0
+    closed = page.trades.loc[filled & page.trades["exit_session"].notna()]
+    skipped = page.trades.loc[~filled]
+    skipped_table = _table(
+        [("Signal", False), ("Security", False), ("Session", False), ("Reason", False)],
+        [[_e(r["signal_session"]), _e(r["security_id"]), _e(r["entry_session"]), _e(r["exit_reason"])] for r in _records(skipped)],
+        "No skipped intents.",
+    )
     trade_rows: list[list[str]] = []
-    for trade in _records(page.trades):
+    for trade in _records(closed):
         cells = []
         for column in TRADE_COLUMNS:
             value = trade.get(column)
@@ -235,6 +245,7 @@ def render_account(page: AccountPage) -> str:
         f"<section><h2>Open positions</h2>{positions}</section>"
         f"<section><h2>Open intents</h2>{intents}</section>"
         f"<section><h2>Closed trades</h2>{trades}</section>"
+        f"<section><h2>Skipped intents</h2>{skipped_table}</section>"
     )
     return _page(page.spec.account_id, body)
 
