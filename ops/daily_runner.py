@@ -39,6 +39,7 @@ from ops.alerts import send_alert
 from ops.daily_account import ACCOUNTS_DIR, PAPER_ACCOUNTS, AccountSpec, AccountView, DailyAccount
 from ops.daily_rules import HOLD_SESSIONS, AccountEvent, Bar, plan_session, settle_session
 from ops.halts import kill_switch_path
+from ops.kite_broker import KiteReader, dry_run_place
 from ops.telegram import Button, Telegram, TelegramError, callback_chat, callback_data, parse_callback, read_offset, write_offset
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -138,6 +139,10 @@ class RunnerPaths:
     @property
     def calendar_root(self) -> Path:
         return self.root / "daily-graph/calendar-evidence-v1"
+
+    @property
+    def kite_dry_run(self) -> Path:
+        return self.runner / "runner-v1/kite-dry-run"
 
 
 def default_paths() -> RunnerPaths:
@@ -606,6 +611,7 @@ class Runner:
     build: Callable[[RunnerPaths, Calendar, date], None] = build_live_data
     log: Callable[[str], None] = print
     telegram: Telegram | None = None
+    kite: KiteReader | None = None
 
     def notify(self, text: str, rows: list[list[Button]] | None = None) -> bool:
         """Post to Telegram when a bot is configured; return whether it went out. A failure never stops the job."""
@@ -730,8 +736,14 @@ class Runner:
         signal_session = calendar.previous_session(today)
         decided = self.read_answers(today, signal_session)
         sent = {account.spec.account_id: place(account, account.view(), today, signal_session) for account, _view in self.ready_accounts()}
-        runs.mark(job_id, "ok", json.dumps({"decided": decided, "sent": sent}, sort_keys=True))
-        return {"status": "ok", "decided": decided, "sent": sent}
+        dry_run = 0
+        try:
+            dry_run = len(dry_run_place(self.paths.accounts, self.paths.kite_dry_run, today, self.kite))
+        except Exception as exc:
+            send_alert("warning", "Kite dry-run failed", root=self.paths.runner, error=type(exc).__name__)
+            self.log(f"Kite dry-run failed: {type(exc).__name__}")
+        runs.mark(job_id, "ok", json.dumps({"decided": decided, "sent": sent, "dry_run": dry_run}, sort_keys=True))
+        return {"status": "ok", "decided": decided, "sent": sent, "dry_run": dry_run}
 
     def read_answers(self, today: date, signal_session: date) -> int:
         """Record each Approve or Reject press on the last signal's open intents; return how many were recorded."""
