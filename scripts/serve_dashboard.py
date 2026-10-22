@@ -1,4 +1,4 @@
-"""Run the local read-only Kairos dashboard at http://127.0.0.1:8765/accounts."""
+"""Run the local Kairos dashboard at http://127.0.0.1:8765/accounts and /approvals."""
 from __future__ import annotations
 
 import argparse
@@ -18,7 +18,8 @@ def main() -> None:
     """Serve the dashboard on localhost."""
     parser = argparse.ArgumentParser(description="Serve the Kairos dashboard on 127.0.0.1.")
     parser.add_argument("--port", type=int, default=8765)
-    uvicorn.run(create_app(), host="127.0.0.1", port=parser.parse_args().port)
+    port = parser.parse_args().port
+    uvicorn.run(create_app(port=port), host="127.0.0.1", port=port)
 
 
 if __name__ == "__main__":

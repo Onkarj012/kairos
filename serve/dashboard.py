@@ -1,16 +1,19 @@
-"""Dashboard read model and server-rendered, read-only account pages."""
+"""Dashboard read model and server-rendered account pages, plus the local approvals page."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime
 from html import escape
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import pandas as pd
 
 from evidence.research_ledger import read_events
 from ops.daily_account import AccountSpec, AccountView, DailyAccount
-from ops.daily_rules import TRADE_COLUMNS, equity_frame, trades_frame
+from ops.daily_rules import TRADE_COLUMNS, Intent, equity_frame, trades_frame
+from ops.daily_runner import ANSWER_CUTOFF, Calendar, answer_cutoff
 from ops.halts import kill_switch_path
 
 STYLE = """<style>
@@ -27,6 +30,8 @@ th,td{text-align:left;padding:7px 9px;border-bottom:1px solid #e4e9ed}th{backgro
 td.num,th.num{text-align:right}
 .badge{display:inline-block;background:#b42318;color:#fff;border-radius:12px;padding:1px 8px;font-size:13px;margin:1px 2px 1px 0}
 .ok{color:#137333}.bad{color:#b42318}
+button{font:inherit;color:#1769aa;background:#fff;border:1px solid #1769aa;border-radius:6px;padding:3px 10px;margin-right:6px;cursor:pointer}
+.notice{padding:10px 12px;background:#eef5fb;border-radius:6px}
 svg{width:100%;height:auto;display:block}
 @media(max-width:600px){main{padding:12px}section{padding:12px}.facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>"""
@@ -78,6 +83,34 @@ def load_account(accounts_root: Path, runner_root: Path, spec: AccountSpec) -> A
         kill_switch=kill_switch_path(runner_root, spec.account_id).exists(),
         halt_log=halt_log,
     )
+
+
+def ready(page: AccountPage) -> bool:
+    """Return whether an account takes answers: not halted and not kill-switched."""
+    return not page.kill_switch and not page.view.halted
+
+
+@dataclass(frozen=True)
+class ApprovalGroup:
+    """One ready account's unsent intents from its latest signal, with the time their answers close."""
+
+    page: AccountPage
+    signal: str
+    intents: list[Intent]
+    cutoff: datetime
+
+
+def approval_groups(pages: list[AccountPage], calendar: Calendar) -> list[ApprovalGroup]:
+    """Return each ready account's unsent intents from its latest signal, with that signal's answer cutoff."""
+    groups: list[ApprovalGroup] = []
+    for page in pages:
+        unsent = [i for i in page.view.state.intents if not i.sent]
+        if not ready(page) or not unsent:
+            continue
+        signal = max(i.signal_session for i in unsent)
+        intents = [i for i in unsent if i.signal_session == signal]
+        groups.append(ApprovalGroup(page, signal, intents, answer_cutoff(calendar, date.fromisoformat(signal))))
+    return groups
 
 
 def _records(frame: pd.DataFrame) -> list[dict[str, Any]]:
@@ -143,6 +176,11 @@ def _page(title: str, body: str) -> str:
     )
 
 
+def _nav() -> str:
+    """Return the links shared by every dashboard page."""
+    return '<p><a href="/accounts">All accounts</a> · <a href="/approvals">Approvals</a></p>'
+
+
 def _table(headers: list[tuple[str, bool]], rows: list[list[str]], empty: str) -> str:
     """Render a table from pre-escaped cells; each header says whether its column is numeric."""
     if not rows:
@@ -179,10 +217,52 @@ def render_accounts(specs: list[AccountSpec], pages: dict[str, AccountPage]) -> 
             _e(state.last_session or "none"),
         ])
     body = (
-        '<h1>Paper accounts</h1><p class="muted">Read-only. Clear halts with <code>scripts/run_daily.py clear --note</code>.</p>'
+        f'{_nav()}<h1>Paper accounts</h1><p class="muted">Clear halts with <code>scripts/run_daily.py clear --note</code>.</p>'
         f"<section>{_table(headers, rows, 'No accounts.')}</section>"
     )
     return _page("Paper accounts", body)
+
+
+def _approval_section(group: ApprovalGroup, now: datetime) -> str:
+    """Render one account's intents; Approve and Reject show only while its answers are open and undecided."""
+    spec = group.page.spec
+    open_now = now < group.cutoff
+    rows: list[list[str]] = []
+    for intent in group.intents:
+        answer = group.page.view.decisions.get(intent.intent_id)
+        action = ""
+        if answer is None and open_now:
+            url = f"/approvals/{quote(spec.account_id, safe='')}/{quote(intent.intent_id, safe='')}"
+            action = (
+                f'<form method="post" action="{_e(url)}">'
+                '<button name="decision" value="approved">Approve</button>'
+                '<button name="decision" value="rejected">Reject</button></form>'
+            )
+        rows.append([_e(intent.security_id), str(intent.qty), _money(intent.reserved), _e(answer or "no answer"), action])
+    closing = f"{'Answers close' if open_now else 'Answers closed'} at {group.cutoff:%H:%M} IST on {group.cutoff:%Y-%m-%d}."
+    silence = "sends" if spec.approval == "auto" else "skips"
+    return (
+        f"<section><h2>{_e(spec.account_id)} · {_e(spec.strategy)}</h2>"
+        f'<p>Approval: {_e(spec.approval)}. Silence {silence} these intents. Signal {_e(group.signal)}.</p>'
+        f'<p class="muted">{_e(closing)}</p>'
+        + _table([("Security", False), ("Qty", True), ("Reserved", True), ("Decision", False), ("Answer", False)], rows, "No intents.")
+        + "</section>"
+    )
+
+
+def render_approvals(groups: list[ApprovalGroup], now: datetime, notice: str = "") -> str:
+    """Render the approvals page: each ready account's open intents, with a notice line when given."""
+    sections = "".join(_approval_section(group, now) for group in groups)
+    if not sections:
+        sections = '<section><p class="muted">No open intents to answer.</p></section>'
+    notice_html = f'<p class="notice">{_e(notice)}</p>' if notice else ""
+    body = (
+        f"{_nav()}<h1>Approvals</h1>"
+        f'<p class="muted">Answers to a signal close at {ANSWER_CUTOFF:%H:%M} IST on the session after it, before the place job. '
+        "Halted and kill-switched accounts are not listed.</p>"
+        f"{notice_html}{sections}"
+    )
+    return _page("Approvals", body)
 
 
 def render_account(page: AccountPage) -> str:
@@ -238,7 +318,7 @@ def render_account(page: AccountPage) -> str:
     trades = _table([(c.replace("_", " "), c in numeric) for c in TRADE_COLUMNS], trade_rows, "No closed trades yet.")
     curve = [(str(r["session_date"]), float(r["equity"])) for r in _records(page.equity)]
     body = (
-        f'<p><a href="/accounts">All accounts</a></p><h1>{_e(page.spec.account_id)}</h1>'
+        f'{_nav()}<h1>{_e(page.spec.account_id)}</h1>'
         f'<section class="facts">{fact_html}</section>'
         f"<section><h2>Halts</h2>{halt_html}{switch}<h2>Halt history</h2>{history}</section>"
         f"<section><h2>Equity after costs</h2>{equity_svg(curve, state.capital)}</section>"
