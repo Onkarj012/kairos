@@ -657,7 +657,17 @@ def test_signal_sends_one_macos_notification_when_intents_exist(tmp_path: Path, 
     _channels_run(paths, "reconcile", LIVE[0], "18:50", mac=mac)
     _channels_run(paths, "signal", LIVE[0], "19:35", mac=mac)
     _channels_run(paths, "signal", LIVE[0], "20:16", mac=mac)  # a later slot re-runs the job and must not announce again
-    assert mac.sent == [f"{2 * len(PAPER_ACCOUNTS)} intents for tomorrow. Answer by 08:40: {APPROVALS_URL}"]
+    assert mac.sent == [f"{2 * len(PAPER_ACCOUNTS)} intents for Thu 2026-10-22. Answer by 08:40: {APPROVALS_URL}"]
+
+
+def test_a_friday_signal_banner_names_the_monday_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+    paths = _live_paths(tmp_path)
+    start(paths, datetime(2026, 10, 23, 12, 0, tzinfo=IST), "test start", CALENDAR)  # opens the accounts on this Friday
+    _run(paths, "reconcile", LIVE[2], "18:50")
+    mac = FakeMac()
+    _channels_run(paths, "signal", LIVE[2], "19:35", mac=mac)
+    assert mac.sent == [f"{2 * len(PAPER_ACCOUNTS)} intents for Mon 2026-10-26. Answer by 08:40: {APPROVALS_URL}"]
 
 
 def test_an_open_halt_sends_one_macos_notification_without_telegram(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

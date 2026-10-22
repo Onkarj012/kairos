@@ -906,7 +906,10 @@ class Runner:
         if key in posted:
             return
         count = sum(1 for _account, view in self.ready_accounts() for i in view.state.intents if not i.sent and i.signal_session == key)
-        if count and self.notify_mac(f"{count} intents for tomorrow. Answer by {ANSWER_CUTOFF:%H:%M}: {APPROVALS_URL}"):
+        if not count:
+            return
+        cutoff = answer_cutoff(self.calendar or load_calendar(self.paths), today)
+        if self.notify_mac(f"{count} intents for {cutoff:%a %Y-%m-%d}. Answer by {cutoff:%H:%M}: {APPROVALS_URL}"):
             _write_atomic(path, (json.dumps(sorted(posted | {key}), indent=1) + "\n").encode("utf-8"))
 
 

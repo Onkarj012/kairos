@@ -79,6 +79,14 @@ def create_app(recommendations=None, *args, root=None, recommendations_path=None
     app = FastAPI(title="Kairos")
     static_data = list(recommendations or [])
 
+    @app.middleware("http")
+    async def refuse_framing(request: Request, call_next):
+        """Stop other sites from framing the dashboard, which would let them trick an approval click."""
+        response = await call_next(request)
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Content-Security-Policy"] = "frame-ancestors 'none'"
+        return response
+
     def roots() -> tuple[Path, Path]:
         """Return the accounts and runner roots, defaulting to the configured derived-data root."""
         paths = default_paths()

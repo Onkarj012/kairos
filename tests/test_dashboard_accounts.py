@@ -145,6 +145,14 @@ def test_unknown_account_is_404(tmp_path):
     assert _get(create_app(accounts_root=tmp_path, runner_root=tmp_path / "runner"), "/accounts/missing")[0] == 404
 
 
+def test_approvals_page_refuses_to_be_framed(tmp_path):
+    status, headers, _body = _call(_approvals_app(tmp_path, "08:30"), "GET", "/approvals")
+
+    assert status == 200
+    assert headers["x-frame-options"] == "DENY"
+    assert headers["content-security-policy"] == "frame-ancestors 'none'"
+
+
 def test_an_approval_from_the_dashboard_records_an_answer_via_dashboard(tmp_path):
     account = _open_with_intents(tmp_path)
     intent_id = f"{SESSIONS[0]}:A"
