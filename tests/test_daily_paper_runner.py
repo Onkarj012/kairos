@@ -134,6 +134,64 @@ def test_next_day_exit_does_not_fund_next_day_entry(tmp_path: Path) -> None:
     assert account.trades().to_csv(index=False) == expected.trades.to_csv(index=False)
 
 
+class OneNameMarket(Market):
+    """A market that ranks only A, so the test controls the one holding."""
+
+    def rank(self, strategy_name: str, session: date) -> tuple[list[Candidate], list[str], list[str]]:
+        return [Candidate("A", 1.0, "fixed")], [], ["A"]
+
+
+class OneNameMarket(Market):
+    """A market that ranks only A, so the test controls the one holding."""
+
+    def rank(self, strategy_name: str, session: date) -> tuple[list[Candidate], list[str], list[str]]:
+        return [Candidate("A", 1.0, "fixed")], [], ["A"]
+
+
+def _one_name(panel: pd.DataFrame) -> OneNameMarket:
+    """Wrap a one-name panel as a market over the first five sessions."""
+    return OneNameMarket(panel=panel, sessions=SESSIONS[:5], cohorts={}, guard_from=date(2025, 8, 1), covered={"A"})
+
+
+def _flat_panel() -> pd.DataFrame:
+    """One name flat at 100 over the first five sessions."""
+    return pd.DataFrame([_row(session, "A") for session in SESSIONS[:5]])
+
+
+def _split_panel() -> pd.DataFrame:
+    """One name after a 1:1 split went ex on SESSIONS[3]: earlier rows carry 0.5, so adjusted prices stay continuous."""
+    rows = []
+    for index, session in enumerate(SESSIONS[:5]):
+        if index < 3:
+            rows.append(_row(session, "A", adj_factor=0.5, prev_close_factor=0.5))
+        elif index == 3:
+            rows.append(_row(session, "A", open=50.0, close=50.0, prev_close_factor=0.5))
+        else:
+            rows.append(_row(session, "A", open=50.0, close=50.0, prev_close=50.0))
+    return pd.DataFrame(rows)
+
+
+def test_split_first_seen_mid_hold_doubles_quantity_and_keeps_value(tmp_path: Path) -> None:
+    """A 1:1 split first seen when its ex-session settles doubles the held quantity and keeps the holding's value."""
+    account = DailyAccount(tmp_path, SPEC)
+    account.open(session=SESSIONS[0].isoformat(), verdict="replay")
+    flat = _one_name(_flat_panel())
+    advance(account, account.view(), flat, SESSIONS[0], plan=True)
+    place(account, account.view(), SESSIONS[1], SESSIONS[0])
+    advance(account, account.view(), flat, SESSIONS[1], plan=False)
+    advance(account, account.view(), flat, SESSIONS[2], plan=False)
+    quantity = account.view().state.holdings[0].qty
+
+    advance(account, account.view(), _one_name(_split_panel()), SESSIONS[3], plan=False)
+
+    view = account.view()
+    marks = {e.session: float(e.data["positions_value"]) for e in view.engine_events if e.kind == "RECONCILED"}
+    assert marks[SESSIONS[2].isoformat()] == pytest.approx(quantity * 100.0)
+    assert marks[SESSIONS[3].isoformat()] == pytest.approx(quantity * 100.0)
+    assert account.trades().set_index("security_id").loc["A", "qty"] == 2 * quantity
+    assert not view.halts
+
+
 def test_interrupted_settle_reruns_to_the_same_log(tmp_path: Path) -> None:
     market = _market()
     clean = replay(market, tmp_path / "clean", (SPEC,), SESSIONS[0], SESSIONS[-1])[SPEC.account_id]

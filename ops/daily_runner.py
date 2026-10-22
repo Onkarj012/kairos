@@ -307,6 +307,11 @@ class Market:
         """Return every id's close for one session."""
         return {str(sid): float(close) for sid, close in self.day(session)["close"].items()}
 
+    def factor_on(self, security_id: str, session: str) -> float | None:
+        """Return one id's adjustment factor on a session of this panel, or None without a row."""
+        day = self.day(date.fromisoformat(session))
+        return float(day.loc[security_id, "adj_factor"]) if security_id in day.index else None
+
     def exit_due_after(self, entry: str) -> str:
         """Return the session three sessions after an entry."""
         day = date.fromisoformat(entry)
@@ -455,7 +460,7 @@ def advance(account: DailyAccount, view: AccountView, market: Market, through: d
         if _check_move(account, view, market, session):
             return view
         events = settle_session(view.state, session.isoformat(), market.bar(session), market.exit_due_after,
-                                final=final and session == through, require_sent=True)
+                                final=final and session == through, require_sent=True, previous_factor=market.factor_on)
         account.append(events)
         view.engine_events.extend(events)
         view.settled.add(session.isoformat())
