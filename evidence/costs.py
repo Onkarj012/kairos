@@ -26,6 +26,9 @@ class IndianEquityCostModel:
     gst_rate: float = 0.18
     sebi_rate: float = 0.000001
     slippage_bps_by_bucket: dict[str, float] | None = None
+    stt_delivery_buy: float = 0.0
+    gst_includes_sebi: bool = False
+    dp_charge_per_sell: float = 0.0
 
     def __post_init__(self) -> None:
         if self.slippage_bps_by_bucket is None:
@@ -60,10 +63,14 @@ class IndianEquityCostModel:
         stamp = notional * _stamp_rate(self, side, product)
         exchange_txn = notional * self.exchange_txn_rate
         sebi = notional * self.sebi_rate
-        gst = (brokerage + exchange_txn) * self.gst_rate
+        gst_base = brokerage + exchange_txn
+        if self.gst_includes_sebi:
+            gst_base += sebi
+        gst = gst_base * self.gst_rate
         slip_bps = self.slippage_bps(liquidity_bucket) if include_slippage else 0.0
         slippage = notional * slip_bps / 10000.0
-        total = brokerage + stt + stamp + exchange_txn + sebi + gst + slippage
+        dp_charge = self.dp_charge_per_sell if side == "sell" and product == "delivery" else 0.0
+        total = brokerage + stt + stamp + exchange_txn + sebi + gst + slippage + dp_charge
         return {
             "notional": float(notional),
             "brokerage": brokerage,
@@ -73,6 +80,7 @@ class IndianEquityCostModel:
             "sebi": sebi,
             "gst": gst,
             "slippage": slippage,
+            "dp_charge": dp_charge,
             "total": total,
             "total_bps": total / notional * 10000.0 if notional else 0.0,
         }
@@ -132,12 +140,10 @@ def calculate_round_trip_cost(
 
 
 def _stt_rate(model: IndianEquityCostModel, side: Side, product: ProductType) -> float:
-    if side != "sell":
-        return 0.0
     if product == "delivery":
-        return model.stt_delivery_sell
+        return model.stt_delivery_buy if side == "buy" else model.stt_delivery_sell
     if product == "intraday":
-        return model.stt_intraday_sell
+        return model.stt_intraday_sell if side == "sell" else 0.0
     raise ValueError(f"unknown product: {product}")
 
 
@@ -152,6 +158,18 @@ def _stamp_rate(model: IndianEquityCostModel, side: Side, product: ProductType) 
 
 
 DEFAULT_COST_MODEL = IndianEquityCostModel()
+ZERODHA_DELIVERY = IndianEquityCostModel(
+    brokerage_rate=0.0,
+    brokerage_cap_per_order=None,
+    stt_delivery_buy=0.001,
+    stt_delivery_sell=0.001,
+    stamp_delivery_buy=0.00015,
+    exchange_txn_rate=0.0000307,
+    sebi_rate=0.000001,
+    gst_rate=0.18,
+    gst_includes_sebi=True,
+    dp_charge_per_sell=15.34,
+)
 DEFAULT_DELIVERY_ROUND_TRIP_BPS = DEFAULT_COST_MODEL.round_trip(100_000, product="delivery", liquidity_bucket="liquid")[
     "total_bps"
 ]

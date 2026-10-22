@@ -107,6 +107,24 @@ def deflated_sharpe_ratio(returns: Iterable[float], *, trials: int) -> float:
     return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
 
 
+def break_even_trials(returns: Iterable[float], *, threshold: float = 0.95, max_trials: int = 10**7) -> int:
+    """Return the largest trial count whose deflated Sharpe meets threshold."""
+    data = list(returns)
+    upper = max(1, int(max_trials))
+    if deflated_sharpe_ratio(data, trials=1) < threshold:
+        return 0
+    if deflated_sharpe_ratio(data, trials=upper) >= threshold:
+        return upper
+    low = 1
+    while low < upper:
+        middle = (low + upper + 1) // 2
+        if deflated_sharpe_ratio(data, trials=middle) >= threshold:
+            low = middle
+        else:
+            upper = middle - 1
+    return low
+
+
 def economic_metrics(returns_bps: Iterable[float], daily_returns_bps: Iterable[float] = ()) -> dict[str, float]:
     returns = list(returns_bps)
     daily = list(daily_returns_bps)
