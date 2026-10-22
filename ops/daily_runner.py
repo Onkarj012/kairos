@@ -186,6 +186,8 @@ def load_calendar(paths: RunnerPaths) -> Calendar:
         date.fromisoformat(row["session_date"]): str(row["state"])
         for row in map(json.loads, paths.frozen_ledger.read_text(encoding="utf-8").splitlines())
     }
+    if shutil.which("pdftotext") is None:
+        raise CalendarMissing("pdftotext is not on PATH, so the retained NSE holiday PDFs cannot be read")
     holidays: dict[int, dict[date, str]] = {}
     annuals, _notices, _sources = load_calendar_evidence(paths.calendar_root)
     for annual in annuals:
