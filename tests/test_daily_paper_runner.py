@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -28,7 +29,8 @@ from ops.daily_runner import (
     start,
     write_live_ledger,
 )
-from ops.telegram import BotApi, Button, TelegramError
+from ops.notify import APPROVALS_URL, Notifier, NotifyError, mac_notifier
+from ops.telegram import BotApi, Button, TelegramError, read_env
 
 SESSIONS = [date(2025, 8, 4) + timedelta(days=offset) for offset in range(12)]
 SPEC = AccountSpec("paper-fixed-100k", "fixed", 100_000)
@@ -626,3 +628,72 @@ def test_bot_errors_and_repr_never_carry_the_token(monkeypatch: pytest.MonkeyPat
         bot.send("hi")
     assert secret not in str(caught.value) and caught.value.__cause__ is None
     assert secret not in repr(bot)
+
+
+class FakeMac:
+    """A macOS notifier that records banners, or fails every send."""
+
+    def __init__(self, fail: bool = False) -> None:
+        self.sent: list[str] = []
+        self.fail = fail
+
+    def send(self, text: str) -> None:
+        if self.fail:
+            raise NotifyError("osascript failed: CalledProcessError")
+        self.sent.append(text)
+
+
+def _channels_run(paths: RunnerPaths, job: str, session: date, at: str, bot: FakeTelegram | None = None, mac: Notifier | None = None) -> dict[str, object]:
+    """Run one job with the given notification channels attached."""
+    now = datetime.fromisoformat(f"{session.isoformat()}T{at}").replace(tzinfo=IST)
+    return Runner(paths, now, cash=FakeCash(set(LIVE)), calendar=CALENDAR, build=_build, log=lambda _m: None, telegram=bot, mac=mac).run(job)
+
+
+def test_signal_sends_one_macos_notification_when_intents_exist(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+    paths = _live_paths(tmp_path)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    mac = FakeMac()
+    _channels_run(paths, "reconcile", LIVE[0], "18:50", mac=mac)
+    _channels_run(paths, "signal", LIVE[0], "19:35", mac=mac)
+    _channels_run(paths, "signal", LIVE[0], "20:16", mac=mac)  # a later slot re-runs the job and must not announce again
+    assert mac.sent == [f"{2 * len(PAPER_ACCOUNTS)} intents for tomorrow. Answer by 08:40: {APPROVALS_URL}"]
+
+
+def test_an_open_halt_sends_one_macos_notification_without_telegram(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+    paths = _live_paths(tmp_path)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    _run(paths, "reconcile", LIVE[0], "18:50")
+    _run(paths, "signal", LIVE[0], "19:35")
+    mac = FakeMac()
+    _channels_run(paths, "place", LIVE[1], "10:05", mac=mac)  # late: halts all four accounts
+    _channels_run(paths, "reconcile", LIVE[1], "18:50", mac=mac)  # still halted: nothing new to post
+    assert len(mac.sent) == 1
+    assert mac.sent[0].startswith("HALT late_run on 2026-10-22")
+
+
+def test_kairos_mac_notify_0_sends_no_macos_notification(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    banners: list[list[str]] = []
+    monkeypatch.setattr(subprocess, "run", lambda args, **_kwargs: banners.append(args))
+    monkeypatch.delenv("KAIROS_MAC_NOTIFY", raising=False)
+    _patch_strategies(monkeypatch)
+    for name, line in (("on", ""), ("off", "KAIROS_MAC_NOTIFY=0\n")):
+        env_file = tmp_path / f"{name}.env"
+        env_file.write_text(line, encoding="utf-8")
+        paths = _live_paths(tmp_path / name)
+        start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
+        _run(paths, "reconcile", LIVE[0], "18:50")
+        _channels_run(paths, "signal", LIVE[0], "19:35", mac=mac_notifier(read_env(env_file)))
+    assert len(banners) == 1  # the run without the switch shows its banner; the other shows none
+
+
+def test_a_failing_macos_notifier_never_stops_the_job_or_telegram(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+    paths = _live_paths(tmp_path)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    _channels_run(paths, "reconcile", LIVE[0], "18:50")
+    bot = FakeTelegram()
+    result = _channels_run(paths, "signal", LIVE[0], "19:35", bot=bot, mac=FakeMac(fail=True))
+    assert result["status"] == "ok"
+    assert len(bot.sent) == len(PAPER_ACCOUNTS)
