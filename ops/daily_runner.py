@@ -742,9 +742,10 @@ class Runner:
         signal_session = calendar.previous_session(today)
         decided = self.read_answers(today, signal_session)
         sent = {account.spec.account_id: place(account, account.view(), today, signal_session) for account, _view in self.ready_accounts()}
+        ready = set(sent)
         dry_run = 0
         try:
-            dry_run = len(dry_run_place(self.paths.accounts, self.paths.kite_dry_run, today, self.kite))
+            dry_run = len(dry_run_place(self.paths.accounts, self.paths.kite_dry_run, today, self.kite, ready))
         except Exception as exc:
             send_alert("warning", "Kite dry-run failed", root=self.paths.runner, error=type(exc).__name__)
             self.log(f"Kite dry-run failed: {type(exc).__name__}")

@@ -91,6 +91,15 @@ def test_dry_run_logs_current_buys_due_sells_holdings_fallback_and_rewrite(tmp_p
     assert fallback_sell["payload"]["quantity"] == 5 and fallback_sell["holdings_qty"] is None
 
 
+def test_dry_run_leaves_out_accounts_the_place_job_skipped(tmp_path: Path) -> None:
+    session = "2026-10-23"
+    accounts_root = tmp_path / "accounts"
+    _account_with_events(accounts_root, 0, session)
+    rows = dry_run_place(accounts_root, tmp_path / "dry", date.fromisoformat(session), None, ready=set())
+    assert rows == []
+    assert (tmp_path / "dry" / f"{session}.jsonl").read_text() == ""
+
+
 def test_reader_failure_does_not_fail_place_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from tests.test_daily_paper_runner import CALENDAR, LIVE, _build, _live_paths, _patch_strategies, _run
     from ops.daily_runner import Runner, IST, start

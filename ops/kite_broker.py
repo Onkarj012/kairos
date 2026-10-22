@@ -93,13 +93,14 @@ class KiteSession:
             raise KiteError(f"Kite holdings failed: {type(exc).__name__}") from None
 
 
-def dry_run_place(accounts_root: Path, log_dir: Path, session: date, reader: KiteReader | None) -> list[dict[str, object]]:
-    """Write this session's paper orders as dry-run JSON lines and return them."""
+def dry_run_place(accounts_root: Path, log_dir: Path, session: date, reader: KiteReader | None,
+                  ready: set[str] | None = None) -> list[dict[str, object]]:
+    """Write this session's paper orders as dry-run JSON lines and return them; ``ready`` limits it to accounts the job placed for."""
     holdings = reader.holdings() if reader is not None else None
     rows: list[dict[str, object]] = []
     day = session.isoformat()
     for spec in PAPER_ACCOUNTS:
-        if spec.capital != 50_000:
+        if spec.capital != 50_000 or (ready is not None and spec.account_id not in ready):
             continue
         path = Path(accounts_root) / spec.account_id / "events.jsonl"
         if not path.exists():
