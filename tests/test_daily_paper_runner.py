@@ -28,6 +28,7 @@ from ops.daily_runner import (
     start,
     write_live_ledger,
 )
+from ops.telegram import BotApi, Button, TelegramError
 
 SESSIONS = [date(2025, 8, 4) + timedelta(days=offset) for offset in range(12)]
 SPEC = AccountSpec("paper-fixed-100k", "fixed", 100_000)
@@ -450,3 +451,130 @@ def test_signal_skips_a_request_that_could_break_the_budget(tmp_path: Path, monk
     cash = FakeCash(set(), spent=4)
     assert _run(paths, "signal", LIVE[0], "19:31", cash)["status"] == "waiting"
     assert cash.calls == []
+
+
+class FakeTelegram:
+    """A bot that records posts and returns scripted button presses."""
+
+    chat_id = "42"
+
+    def __init__(self, presses: list[tuple[str, str]] | None = None, fail: bool = False) -> None:
+        self.sent: list[tuple[str, list[list[Button]] | None]] = []
+        self.answers: list[str] = []
+        self.offsets: list[int | None] = []
+        self.presses = presses or []
+        self.fail = fail
+
+    def send(self, text: str, rows: list[list[Button]] | None = None) -> None:
+        if self.fail:
+            raise TelegramError("sendMessage failed with HTTP 502")
+        self.sent.append((text, rows))
+
+    def updates(self, offset: int | None) -> list[dict[str, object]]:
+        self.offsets.append(offset)
+        return [
+            {"update_id": 100 + n, "callback_query": {"id": f"cb{n}", "data": data, "message": {"chat": {"id": int(chat)}}}}
+            for n, (data, chat) in enumerate(self.presses)
+        ]
+
+    def answer(self, callback_id: str, text: str) -> None:
+        self.answers.append(text)
+
+
+def _telegram_run(paths: RunnerPaths, job: str, session: date, at: str, bot: FakeTelegram) -> dict[str, object]:
+    """Run one job with a fake bot attached."""
+    now = datetime.fromisoformat(f"{session.isoformat()}T{at}").replace(tzinfo=IST)
+    return Runner(paths, now, cash=FakeCash(set(LIVE)), calendar=CALENDAR, build=_build, log=lambda _m: None, telegram=bot).run(job)
+
+
+def test_signal_posts_each_accounts_intents_with_approve_and_reject_buttons(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+    paths = _live_paths(tmp_path)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    bot = FakeTelegram()
+    _telegram_run(paths, "reconcile", LIVE[0], "18:50", bot)
+    _telegram_run(paths, "signal", LIVE[0], "19:35", bot)
+    assert len(bot.sent) == len(PAPER_ACCOUNTS)
+    text, rows = bot.sent[0]
+    assert "for the 2026-10-22 open" in text and "Silence sends them" in text
+    assert [[b.data for b in row] for row in rows] == [
+        ["a:paper-reversal_5d-50k:2026-10-21:A", "r:paper-reversal_5d-50k:2026-10-21:A"],
+        ["a:paper-reversal_5d-50k:2026-10-21:B", "r:paper-reversal_5d-50k:2026-10-21:B"],
+    ]
+
+
+def test_place_records_answers_and_sends_only_unrejected_intents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+    paths = _live_paths(tmp_path)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    _run(paths, "reconcile", LIVE[0], "18:50")
+    _run(paths, "signal", LIVE[0], "19:35")
+    bot = FakeTelegram([
+        ("r:paper-reversal_5d-50k:2026-10-21:A", "42"),
+        ("a:paper-reversal_5d-50k:2026-10-21:A", "42"),  # second answer: first one wins
+        ("a:paper-reversal_5d-50k:2026-10-21:B", "42"),
+        ("r:paper-reversal_5d-100k:2026-10-21:A", "7"),  # another chat: ignored
+        ("r:paper-reversal_5d-100k:2026-10-14:A", "42"),  # an old signal: too late
+    ])
+    result = _telegram_run(paths, "place", LIVE[1], "08:46", bot)
+    assert result["decided"] == 2
+    assert result["sent"]["paper-reversal_5d-50k"] == 1
+    assert result["sent"]["paper-reversal_5d-100k"] == 2
+    assert bot.answers == ["Rejected A for the 2026-10-22 open", "Already rejected: A", "Approved B for the 2026-10-22 open", "Too late for 2026-10-14:A; nothing changed"]
+    assert json.loads(paths.telegram_offset.read_text())["offset"] == 105
+    _run(paths, "reconcile", LIVE[1], "18:50")
+    _run(paths, "signal", LIVE[1], "19:35")
+    account = DailyAccount(paths.accounts, PAPER_ACCOUNTS[0])
+    assert [h.security_id for h in account.view().state.holdings] == ["B"]
+
+
+def test_required_approval_skips_unanswered_intents(tmp_path: Path) -> None:
+    spec = AccountSpec("paper-fixed-100k", "fixed", 100_000, approval="required")
+    market = _market()
+    account = DailyAccount(tmp_path, spec)
+    account.open(session=SESSIONS[0].isoformat(), verdict="replay")
+    advance(account, account.view(), market, SESSIONS[0], plan=True)
+    account.append([AccountEvent("INTENT_APPROVED", SESSIONS[1].isoformat(), {"intent_id": f"{SESSIONS[0]}:A", "security_id": "A", "via": "test", "update_id": 1})])
+    assert place(account, account.view(), SESSIONS[1], SESSIONS[0]) == 1
+    assert [i.security_id for i in account.view().state.intents if i.sent] == ["A"]
+
+
+def test_every_halt_a_job_opens_is_posted_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+    paths = _live_paths(tmp_path)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    bot = FakeTelegram()
+    _telegram_run(paths, "reconcile", LIVE[0], "18:50", bot)
+    _telegram_run(paths, "signal", LIVE[0], "19:35", bot)
+    bot.sent.clear()
+    _telegram_run(paths, "place", LIVE[1], "10:05", bot)  # late: halts all four accounts
+    _telegram_run(paths, "reconcile", LIVE[1], "18:50", bot)  # still halted: nothing new to post
+    assert len(bot.sent) == 1
+    assert bot.sent[0][0].startswith("HALT late_run on 2026-10-22")
+    assert all(spec.account_id in bot.sent[0][0] for spec in PAPER_ACCOUNTS)
+
+
+def test_a_failing_bot_never_stops_a_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+    paths = _live_paths(tmp_path)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    bot = FakeTelegram(fail=True)
+    _telegram_run(paths, "reconcile", LIVE[0], "18:50", bot)
+    assert _telegram_run(paths, "signal", LIVE[0], "19:35", bot)["status"] == "ok"
+
+
+def test_bot_errors_and_repr_never_carry_the_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    import urllib.error
+    import urllib.request
+
+    secret = "123456:SECRET-TOKEN"
+
+    def refuse(request, timeout):
+        raise urllib.error.HTTPError(request.full_url, 401, "Unauthorized", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", refuse)
+    bot = BotApi(secret, "42")
+    with pytest.raises(TelegramError) as caught:
+        bot.send("hi")
+    assert secret not in str(caught.value) and caught.value.__cause__ is None
+    assert secret not in repr(bot)
