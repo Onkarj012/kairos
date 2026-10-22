@@ -15,7 +15,8 @@ if __package__ in {None, ""}:
 
 from ops.alerts import send_alert
 from ops.daily_runner import IST, JOBS, Runner, clear, default_paths, now_ist, replay_check, start, status
-from ops.telegram import TelegramError, load_bot
+from ops.kite_broker import DEFAULT_TOKEN_PATH, KiteSession, load_token
+from ops.telegram import TelegramError, load_bot, read_env
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -44,7 +45,10 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.fromisoformat(args.now).replace(tzinfo=IST) if args.now else now_ist()
     bot = load_bot(REPO / ".env")
     if args.command in JOBS:
-        runner = Runner(paths, now, telegram=bot)
+        env = read_env(REPO / ".env")
+        access_token = load_token(DEFAULT_TOKEN_PATH, now.date())
+        kite = KiteSession(env["KITE_API_KEY"], access_token) if env.get("KITE_API_KEY") and access_token else None
+        runner = Runner(paths, now, telegram=bot, kite=kite)
         try:
             result: object = runner.run(args.command)
         except Exception as exc:
