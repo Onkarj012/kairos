@@ -215,9 +215,9 @@ def render_account(page: AccountPage) -> str:
         "No open intents.",
     )
     numeric = {"qty", "entry_price", "exit_price", "buy_costs", "sell_costs", "net_pnl", "net_bps"}
-    filled = page.trades["qty"] > 0
-    closed = page.trades.loc[filled & page.trades["exit_session"].notna()]
-    skipped = page.trades.loc[~filled]
+    # An exit marks a closed trade even when a reverse split left it at 0 shares; no entry price marks an intent that never filled.
+    closed = page.trades.loc[page.trades["exit_session"].notna()]
+    skipped = page.trades.loc[page.trades["entry_price"].isna()]
     skipped_table = _table(
         [("Signal", False), ("Security", False), ("Session", False), ("Reason", False)],
         [[_e(r["signal_session"]), _e(r["security_id"]), _e(r["entry_session"]), _e(r["exit_reason"])] for r in _records(skipped)],
