@@ -1,10 +1,9 @@
 """Monthly top-N liquidity cohort of security ids, from traded value, presence, identity and fund class only."""
 from __future__ import annotations
 
-import calendar
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
 import pandas as pd
@@ -65,7 +64,6 @@ def build_cohort(
     window: int = WINDOW,
     min_obs: int = MIN_OBS,
     first_month: str = FIRST_MONTH,
-    ledger_end: date | None = None,
 ) -> Cohort:
     """Rank each month's ids on the window before it, drop funds and unproven ids, keep the top."""
     identity = _identity(panel, renames)
@@ -76,8 +74,7 @@ def build_cohort(
     member_rows: list[dict[str, object]] = []
     drop_rows: list[dict[str, object]] = []
     month_rows: list[dict[str, object]] = []
-    ledger_end = ledger_end or sessions[-1]
-    for label, rank_idx in _month_ranks(sessions, panel_end, first_month, ledger_end):
+    for label, rank_idx in _month_ranks(sessions, panel_end, first_month):
         rank_session = sessions[rank_idx]
         ranking = _rank(traded, rank_idx, window, min_obs)
         ranking["fund_class"] = ranking["security_id"].map(classes)
@@ -109,7 +106,7 @@ def build_cohort(
         )
 
     if not month_rows:
-        raise ValueError("no complete months to build a cohort for")
+        raise ValueError("no month has its rank session in the panel")
     members = pd.DataFrame(member_rows, columns=MEMBER_COLUMNS)
     months = pd.DataFrame(month_rows, columns=MONTH_COLUMNS)
     dropped = pd.DataFrame(drop_rows, columns=DROP_COLUMNS)
@@ -217,23 +214,16 @@ def _traded_matrix(panel: pd.DataFrame, sessions: list[date]) -> pd.DataFrame:
     return daily.unstack("security_id").reindex(sessions)
 
 
-def _month_ranks(sessions: list[date], panel_end: date, first_month: str, ledger_end: date) -> list[tuple[str, int]]:
-    """Complete months from first_month, each with the index of the session before its first one."""
+def _month_ranks(sessions: list[date], panel_end: date, first_month: str) -> list[tuple[str, int]]:
+    """Months from first_month whose rank session (the last ledger session before them) is in the panel."""
     first_index: dict[str, int] = {}
     for i, session in enumerate(sessions):
         first_index.setdefault(session.strftime("%Y-%m"), i)
-    plan: list[tuple[str, int]] = []
-    for label, i in first_index.items():
-        year, month = (int(part) for part in label.split("-"))
-        month_end = date(year, month, calendar.monthrange(year, month)[1])
-        last_expected = max(session for session in sessions if session.strftime("%Y-%m") == label)
-        ledger_tail_is_weekend = all(
-            (ledger_end + timedelta(days=offset)).weekday() >= 5
-            for offset in range(1, (month_end - ledger_end).days + 1)
-        )
-        if label >= first_month and i > 0 and last_expected <= panel_end and ledger_tail_is_weekend:
-            plan.append((label, i - 1))
-    return plan
+    return [
+        (label, i - 1)
+        for label, i in first_index.items()
+        if label >= first_month and i > 0 and sessions[i - 1] <= panel_end
+    ]
 
 
 def _rank(traded: pd.DataFrame, rank_idx: int, window: int, min_obs: int) -> pd.DataFrame:

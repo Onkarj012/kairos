@@ -25,7 +25,7 @@ from evidence.research_ledger import ResearchLedgerWriter, read_events
 from evidence.sealed_test import HOLDOUT_START, assert_dev_only, ensure_holdout_sealed, load_dev_panel
 from evidence.trials import global_k
 from ingest.daily_panel import PANEL_FILE, START, derived_root, replace_directory
-from models.daily_baselines import STRATEGIES, Candidate, panel_as_of, trading_sessions
+from models.daily_baselines import STRATEGIES, Candidate, cohort_by_month, rank_session, trading_sessions
 
 
 COHORT_DIR = "daily-runner/cohort-v1"
@@ -80,14 +80,6 @@ def _canonical_hash(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _cohort_by_month(cohort: pd.DataFrame) -> dict[str, list[str]]:
-    """Build month-to-id lists while retaining the full cohort member universe."""
-    return {
-        str(month): sorted(group["security_id"].astype(str).unique().tolist())
-        for month, group in cohort.groupby("month", sort=False)
-    }
-
-
 def _rank_cache(
     strategy_name: str,
     panel: pd.DataFrame,
@@ -97,12 +89,10 @@ def _rank_cache(
     """Rank every development session once for one strategy."""
     strategy = STRATEGIES[strategy_name]
     indexed = panel.set_index(["security_id", "session_date"]).sort_index()
-    cache: dict[date, list[Candidate]] = {}
-    for session in sessions:
-        ids = cohorts.get(session.strftime("%Y-%m"), [])
-        view = panel_as_of(indexed, sessions, session, ids, strategy.lookback_sessions) if ids else indexed.iloc[0:0].reset_index()
-        cache[session] = strategy.rank(view, ids, session) if ids and not view.empty else []
-    return cache
+    return {
+        session: rank_session(strategy, indexed, sessions, session, cohorts.get(session.strftime("%Y-%m"), []))
+        for session in sessions
+    }
 
 
 def _run_folds(
@@ -258,7 +248,7 @@ def _run(args: argparse.Namespace) -> dict[str, Any]:
     sessions = trading_sessions(_ledger_sessions(session_path))
     sessions = [session for session in sessions if session < HOLDOUT_START]
     assert_dev_only(sessions)
-    cohorts = _cohort_by_month(cohort)
+    cohorts = cohort_by_month(cohort)
     prior_identities = {
         str(event.payload["strategy"])
         for event in read_events(args.ledger)

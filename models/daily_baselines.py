@@ -71,6 +71,22 @@ def panel_as_of(
     return result.reset_index(drop=True)
 
 
+def cohort_by_month(cohort: pd.DataFrame) -> dict[str, list[str]]:
+    """Build month-to-id lists from cohort member rows."""
+    return {
+        str(month): sorted(group["security_id"].astype(str).unique().tolist())
+        for month, group in cohort.groupby("month", sort=False)
+    }
+
+
+def rank_session(strategy: Strategy, indexed: pd.DataFrame, sessions: list[date], session: date, ids: list[str]) -> list[Candidate]:
+    """Rank one session's cohort ids over the strategy's lookback slice of an indexed panel."""
+    if not ids:
+        return []
+    view = panel_as_of(indexed, sessions, session, ids, strategy.lookback_sessions)
+    return strategy.rank(view, ids, session) if not view.empty else []
+
+
 def _rank_prices(panel: pd.DataFrame, cohort: list[str], as_of: date, lag_pair: tuple[int, int], name: str, ascending: bool) -> list[Candidate]:
     """Rank cohort ids using valid adjusted closes at the requested session offsets."""
     if (panel["session_date"] > as_of).any():

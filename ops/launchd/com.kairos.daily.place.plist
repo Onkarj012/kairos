@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.kairos.daily.place</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>__UV__</string>
+		<string>run</string>
+		<string>--project</string>
+		<string>__REPO__</string>
+		<string>python</string>
+		<string>__REPO__/scripts/run_daily.py</string>
+		<string>place</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>__REPO__</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>__PATH__</string>
+	</dict>
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>8</integer>
+		<key>Minute</key>
+		<integer>45</integer>
+	</dict>
+	<key>RunAtLoad</key>
+	<false/>
+	<key>StandardOutPath</key>
+	<string>__REPO__/derived_data/daily-runner/runner-v1/logs/place.log</string>
+	<key>StandardErrorPath</key>
+	<string>__REPO__/derived_data/daily-runner/runner-v1/logs/place.log</string>
+</dict>
+</plist>
