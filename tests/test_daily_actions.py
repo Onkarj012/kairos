@@ -144,6 +144,8 @@ def test_failed_nightly_request_alerts_and_the_signal_job_still_completes(tmp_pa
 SPLIT_SUBJECT = "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share"
 TWO_RUPEE_SUBJECT = "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share"
 REVISED_SUBJECT = "Revised: Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share"
+REVISED_TWO_RUPEE_SUBJECT = "Revised: Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share"
+CANCELLED_SUBJECT = "Cancelled: Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share"
 BONUS_1_1_SUBJECT = "Bonus 1:1"
 BONUS_1_2_SUBJECT = "Bonus 1:2"
 
@@ -185,6 +187,25 @@ def test_original_and_revision_with_different_ex_dates_fall_back_to_stage_0(tmp_
     alerts = _alerts(paths)
     assert [(alert["level"], alert["message"]) for alert in alerts] == [("warning", "nightly corporate actions failed")]
     assert "ValueError" in alerts[0]["context"]["error"] and "security_id A" in alerts[0]["context"]["error"]
+
+
+def test_cancelled_original_does_not_block_its_revision(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+    monkeypatch.delenv("KAIROS_DAILY_ACTIONS", raising=False)
+    paths = _nightly_paths(tmp_path)
+    _ready(paths)
+    panel_calls = _stub_cli_builds(monkeypatch)
+    body = json.dumps([
+        {"symbol": "A", "series": "EQ", "isin": "INE000000001", "comp": "Name A", "exDate": ex_date, "recDate": ex_date, "subject": subject}
+        for ex_date, subject in [("21-Oct-2026", SPLIT_SUBJECT), ("21-Oct-2026", CANCELLED_SUBJECT), ("22-Oct-2026", REVISED_TWO_RUPEE_SUBJECT)]
+    ]).encode("utf-8")
+    assert _signal(paths, tmp_path, "1", _fetch([], body=body))["status"] == "ok"
+    assert not alert_path(paths.runner).exists()
+    live_call = panel_calls[-1]
+    factors, _hashes = read_factors(Path(live_call[live_call.index("--adjustments") + 1]))
+    assert len(factors) == 1
+    row = factors.iloc[0]
+    assert (row["security_id"], row["ex_session"], row["factor"]) == ("A", LIVE[1], 0.2)
 
 
 def test_conflicting_ratio_for_a_stage_0_action_falls_back_to_stage_0(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

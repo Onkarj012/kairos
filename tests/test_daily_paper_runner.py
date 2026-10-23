@@ -141,13 +141,6 @@ class OneNameMarket(Market):
         return [Candidate("A", 1.0, "fixed")], [], ["A"]
 
 
-class OneNameMarket(Market):
-    """A market that ranks only A, so the test controls the one holding."""
-
-    def rank(self, strategy_name: str, session: date) -> tuple[list[Candidate], list[str], list[str]]:
-        return [Candidate("A", 1.0, "fixed")], [], ["A"]
-
-
 def _one_name(panel: pd.DataFrame) -> OneNameMarket:
     """Wrap a one-name panel as a market over the first five sessions."""
     return OneNameMarket(panel=panel, sessions=SESSIONS[:5], cohorts={}, guard_from=date(2025, 8, 1), covered={"A"})

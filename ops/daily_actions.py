@@ -112,17 +112,19 @@ def _next_sequence(raw_dir: Path) -> int:
     return 1 + max((int(path.name.split("_", 1)[0]) for path in raw_dir.glob("*.json")), default=0)
 
 
-def _dated_actions(observations: pd.DataFrame) -> pd.DataFrame:
-    """Parsed splits and bonuses that are originals or revisions, with the ex-date as a timestamp."""
+def _dated_actions(observations: pd.DataFrame, withheld: pd.DataFrame) -> pd.DataFrame:
+    """Parsed splits and bonuses that are originals or revisions and no cancellation withholds, with the ex-date as a timestamp."""
     actions = _parsed_actions(observations)
     actions = actions.loc[actions["revision_status"].isin(REVISION_PAIR)]
+    actions = actions.merge(withheld, on=["security_id", "ex_date", "subject"], how="left", indicator=True).query('_merge == "left_only"')
     return actions.assign(day=pd.to_datetime(actions["ex_date"], errors="coerce"))
 
 
-def _check_revisions(nightly: pd.DataFrame, observations: pd.DataFrame) -> None:
+def _check_revisions(nightly: pd.DataFrame, observations: pd.DataFrame, review: pd.DataFrame) -> None:
     """Raise when a nightly action and an action of its kind dated up to 90 days away are one revised and one original."""
-    known = _dated_actions(observations)
-    for action in _dated_actions(nightly).itertuples(index=False):
+    withheld = review.loc[review["reason"].eq("cancelled_action"), ["security_id", "ex_date", "subject"]]
+    known = _dated_actions(observations, withheld)
+    for action in _dated_actions(nightly, withheld).itertuples(index=False):
         other = known.loc[
             known["security_id"].eq(action.security_id)
             & known["kind"].eq(action.kind)
@@ -161,9 +163,9 @@ def merge_nightly(paths: RunnerPaths, today: date, fetch: Fetcher) -> Path | Non
     stage0 = read_corporate_actions(stage0_dir).reindex(columns=OBSERVATION_COLUMNS)
     nightly = _observations(rows, _load_members(paths.covered_ids))
     observations = pd.concat([stage0, nightly], ignore_index=True)
-    _check_revisions(nightly, observations)
     panel = pd.read_parquet(paths.live_panel_dir / PANEL_FILE, columns=["security_id", "session_date", "close", "prev_close"])
     events, review = build_events(observations, panel)
+    _check_revisions(nightly, observations, review)
     stage0_events, stage0_review = build_events(stage0, panel)
     _check_review(review, stage0_review)
     usable = _usable(events)
