@@ -140,8 +140,8 @@ def test_replace_directory_restores_previous_output_when_swap_fails(tmp_path: Pa
     assert not (tmp_path / ".out.retired").exists()
 
 
-def test_adjustment_status_reviews_aborted_fetch_and_failures(tmp_path: Path) -> None:
-    """An aborted corporate-action run or a failed symbol keeps adjustment status at review."""
+def test_adjustment_status_fails_incomplete_fetch_and_reviews_failed_symbols(tmp_path: Path) -> None:
+    """An aborted or incomplete corporate-action run fails; a finished run with failed symbols only needs review."""
     import csv
 
     def write_csv(name: str, columns: list[str], rows: list[list[str]]) -> None:
@@ -151,12 +151,16 @@ def test_adjustment_status_reviews_aborted_fetch_and_failures(tmp_path: Path) ->
             writer.writerow(columns)
             writer.writerows(rows)
 
+    def write_manifest(run_status: str, incomplete: int) -> None:
+        """Write a corporate-actions manifest with a run status and an unanswered request count."""
+        accounting = {"incomplete": incomplete, "not_requested": 0}
+        (tmp_path / "manifest.json").write_text(json.dumps({"run_status": run_status, "request_accounting": accounting}), encoding="utf-8")
+
     write_csv("events.csv", ["kind", "nse_prev_close_adjusted"], [])
     write_csv("purposes.csv", ["reason"], [])
     write_csv("moves.csv", ["reason"], [])
     write_csv("failures.csv", ["symbol"], [])
     (tmp_path / "summary.json").write_text(json.dumps({"tdpowersys_2026_08_24_adjusted_r": 0.0}), encoding="utf-8")
-    (tmp_path / "manifest.json").write_text(json.dumps({"run_status": "aborted"}), encoding="utf-8")
     paths = {
         "events": tmp_path / "events.csv",
         "review_purposes": tmp_path / "purposes.csv",
@@ -166,7 +170,16 @@ def test_adjustment_status_reviews_aborted_fetch_and_failures(tmp_path: Path) ->
         "failures": tmp_path / "failures.csv",
     }
 
-    assert _adjustments(paths).status == "review"
-    write_csv("failures.csv", ["symbol"], [["FAILED"]])
-    (tmp_path / "manifest.json").write_text(json.dumps({"run_status": "finished"}), encoding="utf-8")
+    write_manifest("finished", 0)
+    assert _adjustments(paths).status == "pass"
+    write_manifest("aborted", 0)
+    assert _adjustments(paths).status == "fail"
+    write_manifest("finished", 1)
+    assert _adjustments(paths).status == "fail"
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"run_status": "finished", "request_accounting": {"accepted": 545}}), encoding="utf-8"
+    )
+    assert _adjustments(paths).status == "pass"
+    write_manifest("finished", 0)
+    write_csv("failures.csv", ["symbol"], [["SYM1"]])
     assert _adjustments(paths).status == "review"

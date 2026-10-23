@@ -128,6 +128,10 @@ def build_events(observations: pd.DataFrame, panel: pd.DataFrame) -> tuple[pd.Da
     cancelled = withheld.loc[valid_date.loc[withheld.index], ["security_id", "symbol", "ex_date", "subject"]].assign(reason="cancelled_action")
     eligible = actions.loc[valid_date & actions["revision_status"].ne("cancelled")].copy()
     eligible = eligible.loc[~eligible.index.isin(withheld_indexes)]
+    group = ["security_id", "ex_date", "kind"]
+    has_revision = eligible.groupby(group)["revision_status"].transform(lambda status: status.eq("revised").any())
+    superseded = eligible.loc[has_revision & eligible["revision_status"].ne("revised"), ["security_id", "symbol", "ex_date", "subject"]].assign(reason="superseded_by_revision")
+    eligible = eligible.loc[~has_revision | eligible["revision_status"].eq("revised")]
     conflict_keys = eligible.groupby(["security_id", "ex_date", "kind"])["factor"].nunique()
     conflict_keys = set(conflict_keys[conflict_keys > 1].index)
     conflicting = eligible.loc[
@@ -135,9 +139,7 @@ def build_events(observations: pd.DataFrame, panel: pd.DataFrame) -> tuple[pd.Da
         ["security_id", "symbol", "ex_date", "subject"],
     ].assign(reason="conflicting_factors")
     actions = eligible.loc[~eligible.set_index(["security_id", "ex_date", "kind"]).index.isin(conflict_keys)]
-    actions = actions.drop_duplicates(["security_id", "ex_date", "kind", "factor"]).sort_values(
-        ["security_id", "ex_date", "kind", "factor"], ignore_index=True
-    )
+    actions = actions.drop_duplicates(["security_id", "ex_date", "kind"]).sort_values(["security_id", "ex_date", "kind"], ignore_index=True)
     actions = actions.join(_map_to_panel(actions, panel))
     total = actions.groupby(["security_id", "ex_session"])["factor"].transform("prod")
     states = [_prev_close_state(c0, pc, factor) for c0, pc, factor in zip(actions["c0"], actions["pc"], total)]
@@ -151,7 +153,7 @@ def build_events(observations: pd.DataFrame, panel: pd.DataFrame) -> tuple[pd.Da
     unparsed = observations.loc[observation_dates & unparsed_subject, ["security_id", "symbol", "ex_date", "subject"]].assign(reason="unparsed_purpose")
     unmapped = actions.loc[~mapped, ["security_id", "symbol", "ex_date", "subject"]].assign(reason="no_panel_session_on_or_after_ex_date")
     ambiguous = events.loc[events["nse_prev_close_adjusted"] == "ambiguous", ["security_id", "symbol", "ex_date", "subject"]].assign(reason="ambiguous_prev_close")
-    review = pd.concat([missing_observation_date, cancelled, conflicting, unparsed, unmapped, ambiguous], ignore_index=True)[REVIEW_COLUMNS]
+    review = pd.concat([missing_observation_date, cancelled, superseded, conflicting, unparsed, unmapped, ambiguous], ignore_index=True)[REVIEW_COLUMNS]
     return events, review.sort_values(["reason", "security_id", "ex_date"], ignore_index=True)
 
 

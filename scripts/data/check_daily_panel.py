@@ -217,12 +217,16 @@ def _adjustments(paths: dict[str, Path]) -> Section:
         "- Prev_close adjusted by NSE: " + ", ".join(f"{name} {count}" for name, count in data["prev_close_adjusted"].items()) + "\n"
         f"- TDPOWERSYS 2026-08-24 adjusted r: {data['tdpowersys_2026_08_24_adjusted_r']:.6f}\n"
         f"- Corporate-action run: {data['corporate_actions_run_status']}, {data['corporate_action_failures']} failed symbols\n\n"
-        "Purpose review:\n\n"
+        "Failed symbols:\n\n"
+        + _table(list(failures.columns), failures.values.tolist())
+        + "\nPurpose review:\n\n"
         + _table(list(purposes.columns), purposes.values.tolist())
         + "\nMove review:\n\n"
         + _table(list(moves.columns), moves.values.tolist())
     )
-    status = "review" if corporate_actions["run_status"] == "aborted" or len(failures) or len(purposes) or len(moves) else "pass"
+    accounting = corporate_actions.get("request_accounting", {})
+    incomplete = corporate_actions["run_status"] == "aborted" or accounting.get("incomplete", 0) or accounting.get("not_requested", 0)
+    status = "fail" if incomplete else "review" if len(failures) or len(purposes) or len(moves) else "pass"
     return Section("adjustments", "Adjustment review", status, data, body)
 
 
