@@ -882,7 +882,13 @@ class Runner:
         adjustments = self._nightly_adjustments(today)
         if adjustments is not None:
             # The merge maps ex-dates to tonight's panel, so the panel is built again with the factors it changed.
-            self.build(self.paths, calendar, today, adjustments)
+            try:
+                self.build(self.paths, calendar, today, adjustments)
+            except Exception as exc:
+                # A failed adjusted build can leave the panel and cohort split, so stage 0 rebuilds both.
+                send_alert("warning", "adjusted panel rebuild failed", root=self.paths.runner, error=type(exc).__name__)
+                self.log(f"adjusted panel rebuild failed: {type(exc).__name__}")
+                self.build(self.paths, calendar, today, None)
         market = load_market(self.paths, live=True, calendar=calendar)
         planned: dict[str, int] = {}
         for account, view in self.ready_accounts():

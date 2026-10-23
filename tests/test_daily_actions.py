@@ -14,7 +14,7 @@ from ingest.adjustment_factors import read_factors
 from ingest.daily_panel import PANEL_FILE
 from ops import daily_actions
 from ops.alerts import alert_path
-from ops.daily_runner import IST, Runner, RunnerPaths, start
+from ops.daily_runner import IST, Calendar, Runner, RunnerPaths, build_live_data, start
 from scripts.data import build_daily_panel, build_daily_universe
 from tests.test_daily_paper_runner import CALENDAR, LIVE, FakeCash, _live_paths, _patch_strategies, _row, _run
 
@@ -141,7 +141,32 @@ def test_failed_nightly_request_alerts_and_the_signal_job_still_completes(tmp_pa
     assert [(alert["level"], alert["message"]) for alert in alerts] == [("warning", "nightly corporate actions failed")]
 
 
-SPLIT_SUBJECT = "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share"
+def test_failed_adjusted_rebuild_alerts_and_the_signal_job_falls_back_to_stage_0(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+    monkeypatch.delenv("KAIROS_DAILY_ACTIONS", raising=False)
+    paths = _nightly_paths(tmp_path)
+    _ready(paths)
+    _stub_cli_builds(monkeypatch)
+    builds: list[Path | None] = []
+
+    def build(_paths: RunnerPaths, _calendar: Calendar, _today: date, adjustments: Path | None) -> None:
+        """Record each build; the factor build fails, the stage 0 build runs for real."""
+        builds.append(adjustments)
+        if adjustments is not None:
+            raise RuntimeError("panel rejected the factors")
+        build_live_data(_paths, _calendar, _today, None)
+
+    env_file = tmp_path / ".env"
+    env_file.write_text("KAIROS_DAILY_ACTIONS=1\n", encoding="utf-8")
+    requests: list[tuple[date, date]] = []
+    now = datetime.fromisoformat(f"{LIVE[0].isoformat()}T19:35").replace(tzinfo=IST)
+    runner = Runner(paths, now, cash=FakeCash(set(LIVE)), calendar=CALENDAR, build=build, log=lambda _m: None, env_file=env_file, fetch_actions=_fetch(requests))
+    assert runner.run("signal")["status"] == "ok"
+    assert builds[-1] is None
+    assert [(alert["level"], alert["message"], alert["context"]["error"]) for alert in _alerts(paths)] == [("warning", "adjusted panel rebuild failed", "RuntimeError")]
+
+
+SPLIT_SUBJECT ="Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share"
 TWO_RUPEE_SUBJECT = "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share"
 REVISED_SUBJECT = "Revised: Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 5/- Per Share"
 REVISED_TWO_RUPEE_SUBJECT = "Revised: Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share"
