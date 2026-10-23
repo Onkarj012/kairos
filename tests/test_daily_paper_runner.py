@@ -707,3 +707,19 @@ def test_a_failing_macos_notifier_never_stops_the_job_or_telegram(tmp_path: Path
     result = _channels_run(paths, "signal", LIVE[0], "19:35", bot=bot, mac=FakeMac(fail=True))
     assert result["status"] == "ok"
     assert len(bot.sent) == len(PAPER_ACCOUNTS)
+
+
+def test_a_missing_calendar_sends_the_banner_without_a_date(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_strategies(monkeypatch)
+
+    def missing(calendar: Calendar, signal_session: date) -> datetime:
+        raise CalendarMissing("no retained NSE holiday calendar for 2027")
+
+    monkeypatch.setattr("ops.daily_runner.answer_cutoff", missing)
+    paths = _live_paths(tmp_path)
+    start(paths, datetime(2026, 10, 21, 12, 0, tzinfo=IST), "test start", CALENDAR)
+    _channels_run(paths, "reconcile", LIVE[0], "18:50")
+    mac = FakeMac()
+    result = _channels_run(paths, "signal", LIVE[0], "19:35", mac=mac)
+    assert result["status"] == "ok"
+    assert mac.sent == [f"{2 * len(PAPER_ACCOUNTS)} intents for the next session. Answer on the dashboard: {APPROVALS_URL}"]
