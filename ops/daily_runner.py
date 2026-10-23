@@ -935,8 +935,13 @@ class Runner:
         count = sum(1 for _account, view in self.ready_accounts() for i in view.state.intents if not i.sent and i.signal_session == key)
         if not count:
             return
-        cutoff = answer_cutoff(self.calendar or load_calendar(self.paths), today)
-        if self.notify_mac(f"{count} intents for {cutoff:%a %Y-%m-%d}. Answer by {cutoff:%H:%M}: {APPROVALS_URL}"):
+        try:
+            cutoff = answer_cutoff(self.calendar or load_calendar(self.paths), today)
+            text = f"{count} intents for {cutoff:%a %Y-%m-%d}. Answer by {cutoff:%H:%M}: {APPROVALS_URL}"
+        except CalendarMissing as exc:
+            self.log(f"banner sent without the answer date: {exc}")
+            text = f"{count} intents for the next session. Answer on the dashboard: {APPROVALS_URL}"
+        if self.notify_mac(text):
             _write_atomic(path, (json.dumps(sorted(posted | {key}), indent=1) + "\n").encode("utf-8"))
 
 
