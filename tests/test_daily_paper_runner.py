@@ -134,6 +134,57 @@ def test_next_day_exit_does_not_fund_next_day_entry(tmp_path: Path) -> None:
     assert account.trades().to_csv(index=False) == expected.trades.to_csv(index=False)
 
 
+class OneNameMarket(Market):
+    """A market that ranks only A, so the test controls the one holding."""
+
+    def rank(self, strategy_name: str, session: date) -> tuple[list[Candidate], list[str], list[str]]:
+        return [Candidate("A", 1.0, "fixed")], [], ["A"]
+
+
+def _one_name(panel: pd.DataFrame) -> OneNameMarket:
+    """Wrap a one-name panel as a market over the first five sessions."""
+    return OneNameMarket(panel=panel, sessions=SESSIONS[:5], cohorts={}, guard_from=date(2025, 8, 1), covered={"A"})
+
+
+def _flat_panel() -> pd.DataFrame:
+    """One name flat at 100 over the first five sessions."""
+    return pd.DataFrame([_row(session, "A") for session in SESSIONS[:5]])
+
+
+def _split_panel() -> pd.DataFrame:
+    """One name after a 1:1 split went ex on SESSIONS[3]: earlier rows carry 0.5, so adjusted prices stay continuous."""
+    rows = []
+    for index, session in enumerate(SESSIONS[:5]):
+        if index < 3:
+            rows.append(_row(session, "A", adj_factor=0.5, prev_close_factor=0.5))
+        elif index == 3:
+            rows.append(_row(session, "A", open=50.0, close=50.0, prev_close_factor=0.5))
+        else:
+            rows.append(_row(session, "A", open=50.0, close=50.0, prev_close=50.0))
+    return pd.DataFrame(rows)
+
+
+def test_split_first_seen_mid_hold_doubles_quantity_and_keeps_value(tmp_path: Path) -> None:
+    """A 1:1 split first seen when its ex-session settles doubles the held quantity and keeps the holding's value."""
+    account = DailyAccount(tmp_path, SPEC)
+    account.open(session=SESSIONS[0].isoformat(), verdict="replay")
+    flat = _one_name(_flat_panel())
+    advance(account, account.view(), flat, SESSIONS[0], plan=True)
+    place(account, account.view(), SESSIONS[1], SESSIONS[0])
+    advance(account, account.view(), flat, SESSIONS[1], plan=False)
+    advance(account, account.view(), flat, SESSIONS[2], plan=False)
+    quantity = account.view().state.holdings[0].qty
+
+    advance(account, account.view(), _one_name(_split_panel()), SESSIONS[3], plan=False)
+
+    view = account.view()
+    marks = {e.session: float(e.data["positions_value"]) for e in view.engine_events if e.kind == "RECONCILED"}
+    assert marks[SESSIONS[2].isoformat()] == pytest.approx(quantity * 100.0)
+    assert marks[SESSIONS[3].isoformat()] == pytest.approx(quantity * 100.0)
+    assert account.trades().set_index("security_id").loc["A", "qty"] == 2 * quantity
+    assert not view.halts
+
+
 def test_interrupted_settle_reruns_to_the_same_log(tmp_path: Path) -> None:
     market = _market()
     clean = replay(market, tmp_path / "clean", (SPEC,), SESSIONS[0], SESSIONS[-1])[SPEC.account_id]
@@ -340,21 +391,26 @@ def _live_paths(tmp_path: Path) -> RunnerPaths:
 CALENDAR = Calendar(frozen={date(2026, 10, 19): "expected"}, holidays={2026: {date(2026, 10, 20): "holiday"}})
 
 
-def _build(paths: RunnerPaths, calendar: Calendar, through: date) -> None:
+def _build(paths: RunnerPaths, calendar: Calendar, through: date, adjustments: Path | None = None) -> None:
     """Write only the live ledger; the test panel and cohort are fixed."""
     write_live_ledger(paths, calendar, through)
 
 
 def _run(paths: RunnerPaths, job: str, session: date, at: str, cash: FakeCash | None = None) -> dict[str, object]:
-    """Run one job at an IST clock time on a session."""
+    """Run one job at an IST clock time on a session; the test root has no .env, so no nightly request."""
     now = datetime.fromisoformat(f"{session.isoformat()}T{at}").replace(tzinfo=IST)
-    runner = Runner(paths, now, cash=cash or FakeCash(set(LIVE)), calendar=CALENDAR, build=_build, log=lambda _m: None)
+    runner = Runner(paths, now, cash=cash or FakeCash(set(LIVE)), calendar=CALENDAR, build=_build, log=lambda _m: None, env_file=paths.root / ".env")
     return runner.run(job)
 
 
 def _accounts(paths: RunnerPaths) -> list[DailyAccount]:
     """Return the four paper accounts under a test root."""
     return [DailyAccount(paths.accounts, spec) for spec in PAPER_ACCOUNTS]
+
+
+def _no_actions_request(start: date, end: date) -> dict[str, object]:
+    """Refuse every corporate-actions request, so no test reaches NSE."""
+    raise AssertionError("a test requested corporate actions")
 
 
 def _patch_strategies(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -489,7 +545,7 @@ class FakeTelegram:
 def _telegram_run(paths: RunnerPaths, job: str, session: date, at: str, bot: FakeTelegram) -> dict[str, object]:
     """Run one job with a fake bot attached."""
     now = datetime.fromisoformat(f"{session.isoformat()}T{at}").replace(tzinfo=IST)
-    return Runner(paths, now, cash=FakeCash(set(LIVE)), calendar=CALENDAR, build=_build, log=lambda _m: None, telegram=bot).run(job)
+    return Runner(paths, now, cash=FakeCash(set(LIVE)), calendar=CALENDAR, build=_build, log=lambda _m: None, telegram=bot, env_file=paths.root / ".env").run(job)
 
 
 def test_signal_posts_each_accounts_intents_with_approve_and_reject_buttons(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -644,9 +700,9 @@ class FakeMac:
 
 
 def _channels_run(paths: RunnerPaths, job: str, session: date, at: str, bot: FakeTelegram | None = None, mac: Notifier | None = None) -> dict[str, object]:
-    """Run one job with the given notification channels attached."""
+    """Run one job with the given notification channels attached, and no corporate-actions request."""
     now = datetime.fromisoformat(f"{session.isoformat()}T{at}").replace(tzinfo=IST)
-    return Runner(paths, now, cash=FakeCash(set(LIVE)), calendar=CALENDAR, build=_build, log=lambda _m: None, telegram=bot, mac=mac).run(job)
+    return Runner(paths, now, cash=FakeCash(set(LIVE)), calendar=CALENDAR, build=_build, log=lambda _m: None, telegram=bot, mac=mac, env_file=paths.root / ".env", fetch_actions=_no_actions_request).run(job)
 
 
 def test_signal_sends_one_macos_notification_when_intents_exist(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

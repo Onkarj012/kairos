@@ -188,6 +188,7 @@ class Holding:
     exit_due: str
     last_close: float
     last_factor: float
+    last_session: str
     flags: str = ""
     pending_missing_exit: bool = False
 
@@ -259,6 +260,7 @@ def apply_event(state: AccountState, event: AccountEvent) -> None:
             exit_due=str(data["exit_due"]),
             last_close=float(data["close"]),
             last_factor=float(data["adj_factor"]),
+            last_session=event.session,
         ))
     elif kind == "POSITION_RESCALED":
         holding = _holding(state, data["security_id"])
@@ -277,7 +279,9 @@ def apply_event(state: AccountState, event: AccountEvent) -> None:
         if not isinstance(marks, dict):
             raise ValueError("RECONCILED marks must be a mapping")
         for security_id, close in marks.items():
-            _holding(state, security_id).last_close = float(close)
+            holding = _holding(state, security_id)
+            holding.last_close = float(close)
+            holding.last_session = event.session
         state.positions_value = float(data["positions_value"])
         state.equity = float(data["equity"])
         state.last_session = event.session
@@ -293,6 +297,7 @@ def settle_session(
     *,
     final: bool = False,
     require_sent: bool = False,
+    previous_factor: Callable[[str, str], float | None] | None = None,
 ) -> list[AccountEvent]:
     """Settle one session's rescales, exits, entries and close marks from official prices."""
     events: list[AccountEvent] = []
@@ -326,12 +331,15 @@ def settle_session(
         if row is None:
             continue
         factor = row.adj_factor
-        if factor and holding.last_factor and factor != holding.last_factor:
+        # The panel can be rebuilt with new actions, so compare with its factor for the last settled session, not the stored one.
+        before = previous_factor(holding.security_id, holding.last_session) if previous_factor else None
+        before = holding.last_factor if before is None else before
+        if factor and before and factor != before:
             emit("POSITION_RESCALED", {
                 "security_id": holding.security_id,
                 "qty_before": holding.qty,
-                "qty": rescaled_quantity(holding.qty, holding.last_factor, factor),
-                "factor_before": holding.last_factor,
+                "qty": rescaled_quantity(holding.qty, before, factor),
+                "factor_before": before,
                 "factor": factor,
             })
 
