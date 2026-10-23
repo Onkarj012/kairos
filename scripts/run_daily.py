@@ -16,7 +16,8 @@ if __package__ in {None, ""}:
 from ops.alerts import send_alert
 from ops.daily_runner import IST, JOBS, Runner, clear, default_paths, now_ist, replay_check, start, status
 from ops.kite_broker import DEFAULT_TOKEN_PATH, KiteSession, load_token
-from ops.telegram import TelegramError, load_bot, read_env
+from ops.notify import Notifier, NotifyError, mac_notifier
+from ops.telegram import BotApi, TelegramError, load_bot, read_env
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -32,10 +33,33 @@ def _parser() -> argparse.ArgumentParser:
     resume.add_argument("--note", required=True)
     resume.add_argument("--account", help="clear one account only")
     commands.add_parser("status", help="print each account's state")
-    commands.add_parser("ping", help="send a test message to the configured Telegram chat")
+    commands.add_parser("ping", help="send a test message on each enabled channel: Telegram and macOS")
     check = commands.add_parser("replay", help="replay 20 dev sessions and compare with run_backtest")
     check.add_argument("--out", type=Path, default=default_paths().runner / "replay-v1")
     return parser
+
+
+def _ping(bot: BotApi | None, mac: Notifier | None) -> tuple[dict[str, str], int]:
+    """Send a test message on each enabled channel; the exit code is 1 when one fails or none is enabled."""
+    results: dict[str, str] = {}
+    failed = False
+    if bot is None:
+        results["telegram"] = "not configured: set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env"
+    else:
+        try:
+            bot.send("Kairos daily runner: Telegram is connected.")
+            results["telegram"] = "sent"
+        except TelegramError as exc:
+            results["telegram"], failed = str(exc), True
+    if mac is None:
+        results["macos"] = "off: KAIROS_MAC_NOTIFY=0 in .env or the environment"
+    else:
+        try:
+            mac.send("Kairos daily runner: macOS notifications are connected.")
+            results["macos"] = "sent"
+        except NotifyError as exc:
+            results["macos"], failed = str(exc), True
+    return results, 1 if failed or (bot is None and mac is None) else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -43,12 +67,13 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     paths = default_paths()
     now = datetime.fromisoformat(args.now).replace(tzinfo=IST) if args.now else now_ist()
+    env = read_env(REPO / ".env")
     bot = load_bot(REPO / ".env")
+    mac = mac_notifier(env)
     if args.command in JOBS:
-        env = read_env(REPO / ".env")
         access_token = load_token(DEFAULT_TOKEN_PATH, now.date())
         kite = KiteSession(env["KITE_API_KEY"], access_token) if env.get("KITE_API_KEY") and access_token else None
-        runner = Runner(paths, now, telegram=bot, kite=kite)
+        runner = Runner(paths, now, telegram=bot, mac=mac, kite=kite)
         try:
             result: object = runner.run(args.command)
         except Exception as exc:
@@ -65,14 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "status":
         result, code = status(paths), 0
     elif args.command == "ping":
-        if bot is None:
-            result, code = {"telegram": "not configured: set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env"}, 1
-        else:
-            try:
-                bot.send("Kairos daily runner: Telegram is connected.")
-                result, code = {"telegram": "sent"}, 0
-            except TelegramError as exc:
-                result, code = {"telegram": str(exc)}, 1
+        result, code = _ping(bot, mac)
     else:
         result = replay_check(paths, args.out)
         code = 0 if result["match"] else 1

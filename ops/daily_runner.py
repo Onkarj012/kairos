@@ -40,6 +40,7 @@ from ops.daily_account import ACCOUNTS_DIR, PAPER_ACCOUNTS, AccountSpec, Account
 from ops.daily_rules import HOLD_SESSIONS, AccountEvent, Bar, Intent, plan_session, settle_session
 from ops.halts import kill_switch_path
 from ops.kite_broker import KiteReader, dry_run_place
+from ops.notify import APPROVALS_URL, Notifier, NotifyError
 from ops.telegram import Button, Telegram, TelegramError, callback_chat, callback_data, parse_callback, read_offset, write_offset
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -49,6 +50,8 @@ WINDOWS = {
     "reconcile": (time(18, 45), time(19, 25)),
     "signal": (time(19, 30), time(21, 45)),
 }
+# Answers to a signal's intents close here on the session after the signal, before the place job at 08:45.
+ANSWER_CUTOFF = time(8, 40)
 # Each signal slot may cost up to three requests (the collector's per-call retry cap).
 FETCH_SLOTS = (
     (time(19, 30), "archives_full_bhavdata", False),
@@ -134,6 +137,14 @@ class RunnerPaths:
     @property
     def telegram_halts_posted(self) -> Path:
         return self.runner / "runner-v1/telegram-halts-posted.json"
+
+    @property
+    def mac_intents_posted(self) -> Path:
+        return self.runner / "runner-v1/mac-intents-posted.json"
+
+    @property
+    def mac_halts_posted(self) -> Path:
+        return self.runner / "runner-v1/mac-halts-posted.json"
 
     @property
     def research_ledger(self) -> Path:
@@ -614,10 +625,17 @@ class Runner:
     build: Callable[[RunnerPaths, Calendar, date], None] = build_live_data
     log: Callable[[str], None] = print
     telegram: Telegram | None = None
+    mac: Notifier | None = None
     kite: KiteReader | None = None
 
     def notify(self, text: str, rows: list[list[Button]] | None = None) -> bool:
-        """Post to Telegram when a bot is configured; return whether it went out. A failure never stops the job."""
+        """Send to every configured channel; a failing channel never stops the others. Return whether any went out."""
+        mac = self.notify_mac(text)
+        telegram = self.notify_telegram(text, rows)
+        return mac or telegram
+
+    def notify_telegram(self, text: str, rows: list[list[Button]] | None = None) -> bool:
+        """Post to Telegram when a bot is configured; return whether it went out."""
         if self.telegram is None:
             return False
         try:
@@ -625,6 +643,18 @@ class Runner:
         except TelegramError as exc:
             send_alert("warning", "telegram post failed", root=self.paths.runner, error=str(exc))
             self.log(f"telegram post failed: {exc}")
+            return False
+        return True
+
+    def notify_mac(self, text: str) -> bool:
+        """Show a macOS banner when the channel is on; return whether it went out."""
+        if self.mac is None:
+            return False
+        try:
+            self.mac.send(text)
+        except NotifyError as exc:
+            send_alert("warning", "macOS notification failed", root=self.paths.runner, error=str(exc))
+            self.log(f"macOS notification failed: {exc}")
             return False
         return True
 
@@ -642,18 +672,23 @@ class Runner:
         return found
 
     def post_halts(self) -> None:
-        """Post every open halt not yet posted, one message per reason and session; unposted ones retry on the next job."""
-        if self.telegram is None:
-            return
-        path = self.paths.telegram_halts_posted
+        """Post each open halt once on each channel; a halt a channel failed to post retries on the next job."""
+        halts = sorted(self.open_halts())
+        if self.telegram is not None:
+            self._post_halts_once(halts, self.paths.telegram_halts_posted, self.notify_telegram)
+        if self.mac is not None:
+            self._post_halts_once(halts, self.paths.mac_halts_posted, self.notify_mac)
+
+    def _post_halts_once(self, halts: list[tuple[str, str, str, str, int]], path: Path, send: Callable[[str], bool]) -> None:
+        """Send each halt group that one channel's posted file does not record yet, one message per reason and session."""
         posted = set(json.loads(path.read_text(encoding="utf-8"))) if path.exists() else set()
         grouped: dict[tuple[str, str, str], list[tuple[str, str]]] = {}
-        for account_id, session, reason, detail, clears in sorted(self.open_halts()):
+        for account_id, session, reason, detail, clears in halts:
             key = f"{account_id}|{session}|{reason}|{clears}"
             if key not in posted:
                 grouped.setdefault((session, reason, detail), []).append((account_id, key))
         for (session, reason, detail), members in grouped.items():
-            sent = self.notify(
+            sent = send(
                 f"HALT {reason} on {session}\n{detail}\nAccounts: {', '.join(a for a, _k in members)}\n"
                 "New intents stop until you check and run: uv run python scripts/run_daily.py clear --note \"...\""
             )
@@ -706,6 +741,7 @@ class Runner:
         if job == "signal":
             # Later signal slots end as already_done; this still retries an intent post that failed.
             self.post_intents()
+            self.announce_intents(self.now.date())
         return result
 
     def _run(self, job: str) -> dict[str, object]:
@@ -773,7 +809,8 @@ class Runner:
                 press = parse_callback(update)
                 if press is None or callback_chat(update) != str(self.telegram.chat_id):
                     continue
-                reply = self._record_answer(ready.get(press.account_id), press.account_id, press.intent_id, press.decision, press.update_id, today, signal_session)
+                reply = record_answer(ready.get(press.account_id), press.account_id, press.intent_id, press.decision, today, signal_session,
+                                      via="telegram", update_id=press.update_id)
                 recorded += reply.startswith(("Approved", "Rejected"))
                 try:
                     self.telegram.answer(press.callback_id, reply)
@@ -784,23 +821,6 @@ class Runner:
                 break  # the offset stopped moving; never loop on a misbehaving API
             write_offset(self.paths.telegram_offset, offset)
         return recorded
-
-    def _record_answer(self, account: DailyAccount | None, account_id: str, intent_id: str, decision: str, update_id: int,
-                       today: date, signal_session: date) -> str:
-        """Write one answer when it is still in time; return the reply shown on the button."""
-        if account is None:
-            return f"{account_id} is halted, kill-switched or unknown; nothing changed"
-        view = account.view()
-        intent = next((i for i in view.state.intents if i.intent_id == intent_id), None)
-        if intent is None or intent.sent or intent.signal_session != signal_session.isoformat():
-            return f"Too late for {intent_id}; nothing changed"
-        if intent_id in view.decisions:
-            return f"Already {view.decisions[intent_id]}: {intent.security_id}"
-        kind = "INTENT_APPROVED" if decision == "approved" else "INTENT_REJECTED"
-        account.append([AccountEvent(kind, today.isoformat(), {
-            "intent_id": intent_id, "security_id": intent.security_id, "via": "telegram", "update_id": update_id,
-        })])
-        return f"{decision.capitalize()} {intent.security_id} for the {today.isoformat()} open"
 
     def _reconcile(self, today: date, calendar: Calendar, runs: RunLog, job_id: str) -> dict[str, object]:
         """Verify account logs and settle today when the live panel already has it."""
@@ -872,9 +892,54 @@ class Runner:
                 continue
             signal = max(i.signal_session for i in unsent)
             key = f"{account.spec.account_id}|{signal}"
-            if key not in posted and self.notify(*intent_message(account.spec, signal, [i for i in unsent if i.signal_session == signal])):
+            if key not in posted and self.notify_telegram(*intent_message(account.spec, signal, [i for i in unsent if i.signal_session == signal])):
                 posted.add(key)
                 _write_atomic(path, (json.dumps(sorted(posted), indent=1) + "\n").encode("utf-8"))
+
+    def announce_intents(self, today: date) -> None:
+        """Show one macOS banner for today's signal when a ready account has open intents; a failed banner retries on the next job."""
+        if self.mac is None:
+            return
+        path = self.paths.mac_intents_posted
+        posted = set(json.loads(path.read_text(encoding="utf-8"))) if path.exists() else set()
+        key = today.isoformat()
+        if key in posted:
+            return
+        count = sum(1 for _account, view in self.ready_accounts() for i in view.state.intents if not i.sent and i.signal_session == key)
+        if not count:
+            return
+        try:
+            cutoff = answer_cutoff(self.calendar or load_calendar(self.paths), today)
+            text = f"{count} intents for {cutoff:%a %Y-%m-%d}. Answer by {cutoff:%H:%M}: {APPROVALS_URL}"
+        except CalendarMissing as exc:
+            self.log(f"banner sent without the answer date: {exc}")
+            text = f"{count} intents for the next session. Answer on the dashboard: {APPROVALS_URL}"
+        if self.notify_mac(text):
+            _write_atomic(path, (json.dumps(sorted(posted | {key}), indent=1) + "\n").encode("utf-8"))
+
+
+def record_answer(account: DailyAccount | None, account_id: str, intent_id: str, decision: str, today: date,
+                  signal_session: date, *, via: str, update_id: int | None = None) -> str:
+    """Write one Approve or Reject while it is still in time; return the reply for whoever answered."""
+    if account is None:
+        return f"{account_id} is halted, kill-switched or unknown; nothing changed"
+    view = account.view()
+    intent = next((i for i in view.state.intents if i.intent_id == intent_id), None)
+    if intent is None or intent.sent or intent.signal_session != signal_session.isoformat():
+        return f"Too late for {intent_id}; nothing changed"
+    if intent_id in view.decisions:
+        return f"Already {view.decisions[intent_id]}: {intent.security_id}"
+    kind = "INTENT_APPROVED" if decision == "approved" else "INTENT_REJECTED"
+    data: dict[str, object] = {"intent_id": intent_id, "security_id": intent.security_id, "via": via}
+    if update_id is not None:
+        data["update_id"] = update_id
+    account.append([AccountEvent(kind, today.isoformat(), data)])
+    return f"{decision.capitalize()} {intent.security_id} for the {today.isoformat()} open"
+
+
+def answer_cutoff(calendar: Calendar, signal_session: date) -> datetime:
+    """Return when answers to a signal's intents close: 08:40 IST on the session after it."""
+    return datetime.combine(calendar.sessions_after(signal_session, 1)[0], ANSWER_CUTOFF, tzinfo=IST)
 
 
 def intent_message(spec: AccountSpec, signal: str, intents: list[Intent]) -> tuple[str, list[list[Button]]]:
@@ -889,7 +954,7 @@ def intent_message(spec: AccountSpec, signal: str, intents: list[Intent]) -> tup
             rows.append([Button(f"Approve {intent.security_id}", approve), Button(f"Reject {intent.security_id}", reject)])
         else:
             lines.append(f"   (id too long for buttons; {intent.security_id} follows the {spec.approval} setting)")
-    lines.append(f"Answer before 08:45. {silence}")
+    lines.append(f"Answer before {ANSWER_CUTOFF:%H:%M}. {silence}")
     return "\n".join(lines), rows
 
 

@@ -4,7 +4,7 @@ set -euo pipefail
 
 AGENTS="$HOME/Library/LaunchAgents"
 GUI_UID="$(id -u)"
-for LABEL in com.kairos.daily.place com.kairos.daily.reconcile com.kairos.daily.signal; do
+for LABEL in com.kairos.daily.place com.kairos.daily.reconcile com.kairos.daily.signal com.kairos.dashboard; do
 	launchctl bootout "gui/$GUI_UID/$LABEL" 2>/dev/null || true
 	rm -f "$AGENTS/$LABEL.plist"
 	printf 'Removed %s\n' "$AGENTS/$LABEL.plist"

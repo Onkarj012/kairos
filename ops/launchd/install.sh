@@ -22,8 +22,8 @@ AGENTS="$HOME/Library/LaunchAgents"
 LOGS="$REPO/derived_data/daily-runner/runner-v1/logs"
 mkdir -p "$AGENTS" "$LOGS"
 GUI_UID="$(id -u)"
-for JOB in place reconcile signal; do
-	LABEL="com.kairos.daily.$JOB"
+LABELS="com.kairos.daily.place com.kairos.daily.reconcile com.kairos.daily.signal com.kairos.dashboard"
+for LABEL in $LABELS; do
 	FILE="$AGENTS/$LABEL.plist"
 	sed -e "s#__REPO__#$REPO#g" -e "s#__UV__#$UV#g" -e "s#__PATH__#$JOB_PATH#g" "$REPO/ops/launchd/$LABEL.plist" > "$FILE"
 	plutil -lint "$FILE"
@@ -31,7 +31,7 @@ for JOB in place reconcile signal; do
 	launchctl bootstrap "gui/$GUI_UID" "$FILE"
 done
 
-for LABEL in com.kairos.daily.place com.kairos.daily.reconcile com.kairos.daily.signal; do
+for LABEL in $LABELS; do
 	launchctl print "gui/$GUI_UID/$LABEL" | grep -E 'state|path'
 done
 

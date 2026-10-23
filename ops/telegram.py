@@ -64,7 +64,7 @@ def read_env(path: Path) -> dict[str, str]:
                 continue
             key, _, value = line.removeprefix("export ").partition("=")
             values[key.strip()] = value.strip().strip("'\"")
-    for key in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
+    for key in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "KAIROS_MAC_NOTIFY"):
         if os.environ.get(key):
             values[key] = os.environ[key]
     return values
