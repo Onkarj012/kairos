@@ -1,0 +1,11 @@
+[Unit]
+Description=Kairos evening report job
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 __KAIROS_REPO_ROOT__/scripts/kairos_jobs.py evening-report
+WorkingDirectory=__KAIROS_REPO_ROOT__
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0077
+TimeoutStartSec=20min
+NoNewPrivileges=yes

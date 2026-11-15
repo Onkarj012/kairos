@@ -12,6 +12,25 @@ Entry format:
 
 ---
 
+## 2026-11-15 — Scheduler entry points share one home-state lock and reject unsupported checkout paths before installation
+- rejected: XDG-dependent fallback locks, a separate service override, and silently substituting arbitrary paths into systemd units
+- why: Greptile found the CLI and services could hold different locks, and spaces/replacement/specifier characters could corrupt installed services. Use the stable user home-state lock regardless of log-state or XDG runtime settings; any explicit override must match everywhere. Reject checkout paths outside the documented safe ASCII set before writing units rather than introducing multiple escaping layers. This supersedes the earlier runtime/private-state fallback choice, not the owner-only activation boundary.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; PR 14 Greptile review of c10cefc
+- status: active
+
+## 2026-11-15 — Ticket 14 adds owner-activated user units and shared locks, not an installed working daily pipeline
+- rejected: automatic unit activation, independent per-job writer locks, start-time success heartbeats or successful no-op job adapters
+- why: new systemd unit files are preparation only; the owner must review before installation/activation. All three jobs share one nonblocking lock, and each completed job has its own heartbeat. Missing handlers/token/notifier fail closed rather than fabricate picks or completed work. The external monitor and real reminder/data/model/report adapters are not configured or proven; ticket 14 and its dependent paper gate remain incomplete. Standalone lock defaults to user runtime/private state, not a system lock directory.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; ticket 14 implementation `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket14-20261115-01`
+- status: active for unit/adaptor/monitor boundaries; runtime-dependent lock fallback superseded by 2026-11-15 scheduler home-state lock decision above
+
+Review clarification, 2026-11-15 IST: heartbeat publication follows completion
+logging as the terminal success operation; non-object heartbeat JSON is invalid.
+Uninstall stops every timer before stopping services and removes files only if
+all manager commands succeed. Rejected swallowing manager errors or refreshing
+success before a fallible log write because either hides failure. Source: ticket
+14 independent round-one review in this coordinator thread. Status: active.
+
 ## 2026-11-15 — Ticket 02 retains login in a minimal helper rather than retaining broker code for token utilities
 - rejected: keeping the old Kite broker and its order API solely to supply login constants and token persistence
 - why: preserve the standing one-tap login path, token JSON/private permissions and IST behavior without retaining the dropped runner or order machinery. Login checks use injected settings and temporary tokens only, not a real callback, account or network call.
