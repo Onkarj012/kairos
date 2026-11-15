@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from ops.scheduled_jobs import TokenRecord, heartbeat_is_fresh, parse_token_record, run_job, valid_token
+from ops.scheduled_jobs import TokenRecord, heartbeat_is_fresh, main, parse_token_record, run_job, valid_token
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -68,6 +68,17 @@ def test_unconfigured_and_failed_jobs_do_not_refresh_heartbeat(tmp_path: Path) -
     assert run_job("evening-build-picks", runtime_dir=runtime, lock_path=lock) == 2
     assert run_job("evening-report", runtime_dir=runtime, lock_path=lock, handler=FakeHandler(fail=True)) == 1
     assert not (runtime / "heartbeats/evening-build-picks.json").exists()
+    assert not (runtime / "heartbeats/evening-report.json").exists()
+
+
+def test_unconfigured_cli_uses_private_state_without_system_lock(tmp_path, monkeypatch):
+    runtime = tmp_path / "jobs"
+    monkeypatch.setenv("KAIROS_JOB_STATE", str(runtime))
+    monkeypatch.delenv("KAIROS_JOB_LOCK", raising=False)
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    assert main(["evening-report"]) == 2
+    assert (runtime / "kairos-jobs.lock").exists()
+    assert "job backend is not configured" in (runtime / "jobs.jsonl").read_text()
     assert not (runtime / "heartbeats/evening-report.json").exists()
 
 

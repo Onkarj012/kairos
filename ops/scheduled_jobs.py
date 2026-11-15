@@ -1,6 +1,6 @@
 """Fail-closed runtime for the bounded Kairos systemd jobs.
 
-The external monitor contract is a JSON document at ``heartbeat.json``. Only a
+The external monitor contract uses per-job JSON under ``heartbeats/``. Only a
 fully completed, configured handler writes a per-job ``completed_at`` heartbeat. A
 started job or a held/failed job never refreshes that deadline.
 """
@@ -149,7 +149,8 @@ def main(argv: list[str] | None = None) -> int:
     # Real handlers and transports are intentionally unavailable until later
     # tickets provide explicit, audited adapters.
     base = Path(os.environ.get("KAIROS_JOB_STATE", Path.home() / ".local/state/kairos/jobs"))
-    lock = Path(os.environ.get("KAIROS_JOB_LOCK", "/run/lock/kairos-jobs.lock"))
+    lock_root = Path(os.environ.get("XDG_RUNTIME_DIR", str(base)))
+    lock = Path(os.environ.get("KAIROS_JOB_LOCK", lock_root / "kairos-jobs.lock"))
     return run_job(args[0], runtime_dir=base, lock_path=lock)
 
 

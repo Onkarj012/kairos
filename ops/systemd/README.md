@@ -24,6 +24,11 @@ or process death. Logs are under `~/.local/state/kairos/jobs/jobs.jsonl` and
 contain job names, event times and safe reason labels only. Token values,
 paths, and exception messages are never logged.
 
+Standalone CLI use defaults to the same `XDG_RUNTIME_DIR` lock directory when
+available, otherwise the private job state directory; it does not require a
+writable system `/run/lock`. The service entry point establishes the repository
+import path without relying on ambient `PYTHONPATH`.
+
 Successful completion atomically replaces one per-job JSON file in
 `~/.local/state/kairos/jobs/heartbeats/`. Its fields are `job`, `started_at`,
 `completed_at`, and `timezone`. A monitor must accept only the expected job and

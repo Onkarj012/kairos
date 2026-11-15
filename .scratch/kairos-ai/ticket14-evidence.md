@@ -18,6 +18,15 @@ Status: implementation only; ticket 14 remains incomplete.
 
 ## Validation performed
 
+- Coordinator inspected the full three-file import closure and the entry point,
+  then reran the isolated selection using private TMPDIR: **6 passed in 0.06s**,
+  zero safety refusals. Fixed repository imports for the service entry point
+  and a user-writable standalone lock default; production adapters remain absent.
+  Invoking the script under `env -i` and isolated Python from an unrelated
+  temporary directory exited held (2), wrote only temporary started/held logs,
+  and wrote no success heartbeat. No systemd or network action occurred.
+- Added an explicit one-file ignore exception for this small evidence note;
+  other scratch outputs/data remain excluded.
 - Import closure audited before execution with
   `/usr/bin/python3 -I -S -B /tmp/kairos-safe-focused-check.py "$PWD" tests/test_scheduled_jobs.py`.
   Closure: `tests/test_scheduled_jobs.py`, `ops/scheduled_jobs.py`, and
