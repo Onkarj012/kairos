@@ -2,7 +2,7 @@
 
 **What to build:** The same three-way link test (true, none, shuffled) on the minute data, where information spreading between linked stocks should be fastest and strongest. It reuses the ripple model from 27 on the same-day dataset and is judged on the same-day replay. Plan: `../spec.md` sections 5 (minute data) and 12 (phase 4).
 
-**Blocked by:** 27, 19
+**Blocked by:** 27, 19, 21
 
 **Status:** ready-for-agent
 

@@ -2,7 +2,7 @@
 
 **What to build:** Retrain the table model, the five-encoder model and the one-reader model on the extended history (from 2015) and the step 2 market inputs. The news reader is conditional on ticket 25's accepted coverage evidence; do not enable it before that evidence is accepted. Missing news never blocks the core richer-input run. Each addition is a change written down before it runs, with the improvement it is expected to bring. It is kept only if it improves the replay result on 2023 by more than the spread between random starts, and the gain does not come from a handful of stocks or one month. Otherwise it is dropped and logged. Plan: `../spec.md` sections 7 and 12 (phase 4).
 
-**Blocked by:** 09, 10, 18, 23
+**Blocked by:** 09, 10, 12, 18, 23
 
 **Status:** ready-for-agent
 

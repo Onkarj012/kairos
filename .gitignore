@@ -18,7 +18,7 @@ secrets.json
 *.onnx
 
 # Local data, outputs, and private plans stay ignored.
-/derived_data/
+/derived_data
 /data/
 /runs/
 

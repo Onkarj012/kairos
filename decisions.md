@@ -12,6 +12,12 @@ Entry format:
 
 ---
 
+## 2026-11-15 — Calibration and replay producers must pass before dependent model work; setup restrictions do not ban authorized later tickets
+- rejected: starting 09 without 07 calibration/table-model evidence, 26 without 12 swing replay, or 28 without 21 same-day replay; making setup-only training and Mac restrictions permanent
+- why: independent pre-PR review found these missing prerequisites and conflicting safety instructions. Add the three edges to tickets and execution ledger. Permit only audited explicit synthetic tests during cleanup, including startup and plugin audits. Later ticket-scoped pre-2025 training, read-only Mac source transfer for 08, and source-preserving output packing for 17 remain authorized. No agent opens the vault or scores held-out dates; live broker/account calls and deployment remain unauthorized. Restore the data-symlink ignore rule and owner-only resume permission.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; independent review `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-setup-review-20261115-r1`
+- status: active
+
 ## 2026-11-15 — Kairos AI execution is owner-authorized under one-coordinator, bounded-worker orchestration
 - rejected: the older Haiku-only high implementation policy and unconstrained parallel work across shared project state
 - why: use Luna medium by default and high for judgment; Haiku may implement bounded tickets. One coordinator owns one ticket/worktree/branch/PR per change, with at most three implementation workers initially. Dispatch only disjoint scopes after checking actual overlap. An independent gpt-6.1-sol high review must review the current head before any PR. The coordinator babysits and merges only passing, authorized changes in this repository. Only the coordinator edits the shared execution ledger. This authority covers commits, pushes, PRs, in-scope fixes, and merges; it does not authorize trading, deployment, opening the vault, broker/account access, or other owner-only actions.

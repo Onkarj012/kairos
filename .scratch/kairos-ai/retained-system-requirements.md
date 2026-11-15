@@ -13,7 +13,7 @@ This short excerpt carries forward only the adopted requirements from Kairos v2 
 
 ## Risk
 
-- Keep one persistent risk state with separate permissions to add exposure, reduce exposure, reconcile, and observe. Reconciliation is never disabled.
+- Keep one persistent risk state with separate permissions to add exposure, reduce exposure, reconcile and observe, and resume. Reconciliation is never disabled. Resume after a hard stop requires explicit owner review and a recorded owner restart, as required by ticket 13.
 - Enforce name, sector, gross, order-notional, daily-turnover, order-count, and participation limits at the order boundary.
 - Fail closed on stale data, missing token, failed reconciliation, or unknown order state.
 - Set the loss budget against total investable capital and write it down before any real-money stage.
