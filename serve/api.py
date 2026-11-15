@@ -5,13 +5,12 @@ import json
 from collections.abc import Callable, Mapping
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
 from fastapi import Request
-
-if TYPE_CHECKING:
-    from ops.daily_runner import Calendar
+from ingest.daily_panel import derived_root
+from ops.account_core import AccountEvent
+from ops.paper_calendar import Calendar, CalendarMissing, answer_cutoff, load_calendar, now_ist
 
 
 def trusted_origin(headers: Mapping[str, str], port: int) -> bool:
@@ -64,7 +63,6 @@ def create_app(recommendations=None, *args, root=None, recommendations_path=None
     from fastapi.responses import HTMLResponse, RedirectResponse
 
     from ops.daily_account import PAPER_ACCOUNTS, DailyAccount
-    from ops.daily_runner import CalendarMissing, answer_cutoff, default_paths, load_calendar, now_ist, record_answer
     from serve.dashboard import (
         AccountPage,
         account_json,
@@ -89,8 +87,8 @@ def create_app(recommendations=None, *args, root=None, recommendations_path=None
 
     def roots() -> tuple[Path, Path]:
         """Return the accounts and runner roots, defaulting to the configured derived-data root."""
-        paths = default_paths()
-        return Path(accounts_root or paths.accounts), Path(runner_root or paths.runner)
+        root_path = derived_root()
+        return Path(accounts_root or root_path / "daily-runner/accounts"), Path(runner_root or root_path / "daily-runner")
 
     def page_for(account_id: str) -> AccountPage:
         """Load one opened account or answer 404."""
@@ -102,7 +100,7 @@ def create_app(recommendations=None, *args, root=None, recommendations_path=None
 
     def current_calendar() -> "Calendar":
         """Return the session calendar; raise CalendarMissing when its retained files are unreadable."""
-        return calendar if calendar is not None else load_calendar(default_paths())
+        return calendar if calendar is not None else load_calendar(derived_root())
 
     def current_time() -> datetime:
         """Return the time answers are judged against: the injected clock, or IST now."""
@@ -125,7 +123,10 @@ def create_app(recommendations=None, *args, root=None, recommendations_path=None
         if now >= cutoff:
             return f"Answers closed at {cutoff:%H:%M} IST on {cutoff:%Y-%m-%d}; nothing changed"
         accounts, _runner = roots()
-        return record_answer(DailyAccount(accounts, page.spec), account_id, intent_id, decision, cutoff.date(), signal, via="dashboard")
+        data: dict[str, object] = {"intent_id": intent_id, "security_id": intent.security_id, "via": "dashboard"}
+        kind = "INTENT_APPROVED" if decision == "approved" else "INTENT_REJECTED"
+        DailyAccount(accounts, page.spec).append([AccountEvent(kind, cutoff.date().isoformat(), data)])
+        return f"{decision.capitalize()} {intent.security_id} for the {cutoff.date().isoformat()} open"
 
     def current_recommendations():
         if recommendations_path is not None or root is not None:
