@@ -1,5 +1,18 @@
 # Kairos AI execution ledger
 
+Current-main integration checkpoint, 2026-11-15 IST: PR 14 squash-merged as
+`b86f709a36f651dc5526f5ea64d5ca2f3b3ac67a` after exact cea2ce7 Sol high approval,
+Greptile 5/5/SUCCESS, CodeRabbit SKIPPED, resolved threads and owner ADMIN check.
+Watch removed after merge; checkout retained, no activation. Ticket 03 c91e4d3
+round-two review approved all three restored-coverage findings. Integrated the
+new main in its isolated checkout; only ledger/decisions conflicted and both
+intents were retained. Ticket 03 production/test changes remain unchanged from
+approved c91e4d3; scheduler/data/model trees match new main. Integrated guarded
+selection: 45 passed in 1.60s, zero safety refusals, 29 audited local files;
+fake-manager/path-refusal shell scenarios also pass. Fresh exact integrated-head
+approval is required before opening the cleanup PR. Stored-data panel rebuild,
+calendar provisioning and live behavior remain unverified. No owner-root writes.
+
 Ticket 03 round-one coverage checkpoint, 2026-11-15 IST: restored direct retained
 event-log safeguards, dashboard route/no-write/trade-rendering regressions and
 actual CLI exhausted-budget refusal with malformed-summary cases. Only tests
@@ -12,6 +25,23 @@ https://github.com/Onkarj012/kairos/pull/14, awaiting current-head remote review
 14 remains incomplete, 15 blocked; 04/05/17 evidence gaps remain unchanged.
 
 Research cleanup checkpoint, 2026-11-15 IST: ticket 02 PR13 merged6223a37 with scoped cleanup evidence accepted; ticket 03 worker committed `2dccb71` from that base. Coordinator inspected the 31-path deletion/extraction scope and reproduced 37 explicit synthetic tests in1.81s after auditing26localfiles, zero safety refusals. Collector CLI `--help` separately passed isolated startup with only its audited script source exempted from the generic path-component guard; no acquisition/data access occurred. Actual stored-panel rebuild, calendar provisioning and live behavior remain unverified. Current-head independent review is next. Ticket14 infrastructure is paused at bf4e40d in its own checkout for independent review: six synthetic checks, unconfigured held CLI, no installation/activation; external alert/reminder/real handlers absent, so14incomplete15blocked. Ticket04 remains incomplete and05/17blocked.
+PR 14 bot-fix checkpoint, 2026-11-15 IST: c10cefc received Sol high approval and
+opened https://github.com/Onkarj012/kairos/pull/14. Greptile 4/5 identified differing
+lock defaults and unsafe installer paths. Coordinator reproduced/fixed both;
+eight guarded tests plus fake-manager/path-refusal shell checks pass. Changes
+await fresh exact-head review before push. No merge, activation or delivery
+evidence is claimed; 14 incomplete and 15 blocked. Ticket 03 coverage fixes are
+committed c91e4d3, awaiting independent round-two review.
+
+Ticket 14 review-fix checkpoint, 2026-11-15 IST: round one blocked three P2s;
+coordinator reproduced and fixed log-before-heartbeat ordering, non-object JSON
+refusal and fail-closed uninstall of timers plus active services. Eight isolated
+synthetic Python tests and three fake-manager shell scenarios pass. No host
+systemd action occurred. Fresh exact-head round-two review is pending. Ticket 14
+remains incomplete and 15 blocked. Ticket 03 separately received three retained
+coverage findings; no PR has opened for either branch.
+
+Scheduler checkpoint, 2026-11-15 IST: ticket 02 PR https://github.com/Onkarj012/kairos/pull/13 merged as `6223a371124b30422909b7ad75631f4b3670b369` and unwatched after exact-head Sol high approval, 19 synthetic checks, Greptile 5/5/SUCCESS, CodeRabbit SKIPPED and no review threads. Cleanup evidence accepted. Tickets 03 and 14 dispatched from that base with disjoint scopes. Ticket 14 worker committed faef77e; coordinator fixed entry-point imports and standalone lock location, reproduced 6 focused synthetic checks with no safety refusals plus an isolated temporary-state held CLI invocation. No timers installed/enabled or handlers deployed. Current-head independent review remains required before PR; outside-host alert/reminder evidence is absent, so 14 is incomplete and 15 blocked. Ticket 03 research/collector cleanup continues independently; ticket 04 remains incomplete and 05/17 blocked.
 
 PR 13 feedback checkpoint, 2026-11-15 IST: Greptile reviewed remote `2f19c9d` at 4/5 and correctly found that deleting the mixed runner test file also removed three standalone kept safeguards. Coordinator restored them in isolated `tests/test_kept_safeguards.py`: truncated Telegram reply handling, synthetic-token-safe errors/repr, and synthetic legacy-holdout account refusal with no log write. Telegram calls are intercepted with a fake opener; no network/account/vault data is used. Audited 44 local transitive files and reran exactly five approved files: 19 passed in 2.90s, zero safety refusals. The narrower integration-only review at 6c62c81 was canceled before this superseding test change; a fresh combined integration/fix review must pass before push. No production code changed for this finding. PR 13 remains watched; no merge on its older head.
 
@@ -34,7 +64,7 @@ Initial disjoint implementation scopes after setup: ticket 01 owns operations/ac
 | Setup | merged, evidence accepted | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-setup-20261115-01` | `t3/kairos-ai-setup` | https://github.com/Onkarj012/kairos/pull/9 | Merge 31cd294; static checks; exact-head Sol approval; Greptile 5/5; no unresolved threads | none |
 | 01 | merged; cleanup evidence accepted | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket01-20261115-01` | `t3/kairos-ai-01-kept-parts` | https://github.com/Onkarj012/kairos/pull/11 | Merge b993634; final head 7db9535 Sol high approved; 10 synthetic tests; Greptile 5/5/SUCCESS; no unresolved threads | Calendar provisioning and actual-history integration unverified; legacy cutoff handoff to 03/04 |
 | 02 | merged; scoped cleanup evidence accepted | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket02-20261115-01` | t3/kairos-ai-02-remove-old-runner | https://github.com/Onkarj012/kairos/pull/13 | Merge6223a37; exact0e858e7 Sol high approved;19synthetic checks;Greptile5/5/SUCCESS;no threads | Actual login/calendar/notification/real-history behavior unverified;no deployment |
-| 03 | implementation committed; independent review pending | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket03-20261115-01` | t3/kairos-ai-03-remove-research-gates | none | Base6223a37;worker2dccb71;37synthetic checks;26-local-file audit;CLI startup offline;all deletions explained | Exact-head review/PR/checks/merge;actualstored-data rebuild andcalendar provisioning notclaimed |
+| 03 | approved coverage fixes; current-main integration review pending | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket03-20261115-01` | t3/kairos-ai-03-remove-research-gates | none | c91e4d3 Sol high approved; 37 focused synthetic checks; 27-local-file audit; actual CLI refusal; all 25 deletions explained | Exact integrated-head review/PR/checks/merge; actual stored-data rebuild and calendar provisioning unverified |
 | 04 | infrastructure merged; ticket evidence incomplete | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket04-20261115-01` | `t3/kairos-ai-04-blind-vault` | https://github.com/Onkarj012/kairos/pull/10 | Merge 1e3d4fb; Sol high and Greptile 5/5 at exact head 08e07c7; 16 synthetic tests | Dedicated owner-service OS/IPC enforcement and real partition/count/checksum evidence absent; 05/17 remain blocked |
 | 05 | blocked | — | — | — | Dataset rows/counts, three checks, masked ambiguous target/stop answers | 04 |
 | 06 | blocked | — | — | — | Yardstick results table and run records | 05 |
@@ -45,7 +75,7 @@ Initial disjoint implementation scopes after setup: ticket 01 owns operations/ac
 | 11 | blocked | — | — | — | Swing picks output and focused tests | 07 |
 | 12 | blocked | — | — | — | Honest swing replay, conservative ambiguous-bar counts, and date refusal | 11 |
 | 13 | blocked | — | — | — | Risk-state tests and documented loss budget | 12 |
-| 14 | partial infrastructure committed; independent review pending | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket14-20261115-01` | t3/kairos-ai-14-scheduled-jobs | none | Base6223a37;headbf4e40d;6synthetic checks;isolatedCLI held;unit/shell syntax | Externalmonitor killalert/reminder delivery andrealhandlers absent;14incomplete15blocked;no activation |
+| 14 | infrastructure merged; ticket evidence incomplete | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket14-20261115-01` | t3/kairos-ai-14-scheduled-jobs | https://github.com/Onkarj012/kairos/pull/14 | Merge b86f709; exact cea2ce7 Sol high approved; 8 guarded tests, shell/unit checks; Greptile 5/5/SUCCESS; no unresolved threads | External monitor kill-alert/reminder delivery and real handlers absent; 14 incomplete, 15 blocked; no activation |
 | 15 | blocked | — | — | — | Swing stage 1 elapsed paper record and acceptance evidence | 13, 14 |
 | 16 | blocked | — | — | — | Swing paper scorecard and about 100 completed trades | 15 |
 | 17 | blocked | — | — | — | Mac packing evidence, checksums/counts; output packs only, source CSVs untouched | 04 |

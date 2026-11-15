@@ -61,6 +61,14 @@ Replaced the mixed `tests/test_dashboard_accounts.py` legacy-runner cases with r
 
 ### Validation and limits
 
+Current-main integration after PR 14 merge b86f709: scheduler, data and model
+implementations remain byte-identical to main; ticket 03 code/tests remain
+byte-identical to independently approved c91e4d3. Only shared ledger/decisions
+needed conflict resolution. The combined audited selection adds the scheduler
+file to the six approved cleanup test files: **45 passed in 1.60s**, zero safety
+refusals, 29 local files audited. Scheduler fake-manager/path-refusal shell cases
+also pass without host actions. Fresh integrated-head approval remains required.
+
 Round-one review found lost coverage for kept behavior, not demonstrated
 production failures. Restored all eight old event-log cases against the retained
 writer; standalone dashboard anti-framing, 08:40 cutoff/no-write, origin/referrer,
