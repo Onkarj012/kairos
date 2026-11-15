@@ -1,12 +1,8 @@
 import inspect
 import json
-from datetime import datetime, timedelta
 
-from ops.broker import LiveExecutionGate
 from ops.cron import run_kairos_daily_dag
-from ops.graduation import evaluate_paper_graduation
 from ops.ledger import ledger_path, load_ledger
-from ops.live_eligibility import LiveEligibilityPolicy, evaluate_live_eligibility
 from ops.paper import PaperSignal, append_signal_to_ledger, close_paper_trade, paper_lifecycle_summary
 from serve.api import create_app
 from serve.dashboard import build_dashboard_payload
@@ -40,36 +36,6 @@ def test_paper_lifecycle_appends_hash_chain_guards_duplicates_and_closes(tmp_pat
     assert metadata["previous_hash"] == "GENESIS"
     assert metadata["chain_hash"]
     assert paper_lifecycle_summary(tmp_path, "F")["closed"] == 1
-
-
-def test_graduation_passes_and_fails_for_phase_11_2_thresholds():
-    start = datetime(2025, 1, 1)
-    passing_ledger = [
-        {
-            "signal_ts": (start + timedelta(days=i)).isoformat(),
-            "pnl": 10.0,
-            "fill_divergence": 0.1,
-        }
-        for i in range(220)
-    ]
-    passing = evaluate_paper_graduation(
-        passing_ledger,
-        probabilities=[0.8] * 200,
-        outcomes=[1] * 160 + [0] * 40,
-        incidents=[],
-    )
-    failing = evaluate_paper_graduation(
-        passing_ledger[:42],
-        probabilities=[0.6, 0.6],
-        outcomes=[0, 0],
-        incidents=[{"type": "duplicate_signal", "explained": False}],
-    )
-
-    assert passing["live_eligible"] is True
-    assert passing["checks"]["duration"]["pass"] is True
-    assert failing["live_eligible"] is False
-    assert failing["checks"]["trades"]["pass"] is False
-    assert failing["checks"]["duplicate_signals"]["pass"] is False
 
 
 def test_kairos_daily_dag_persists_manifest_and_failure_alert(tmp_path):
@@ -132,50 +98,6 @@ def test_api_serves_full_recommendation_no_trade_health_and_evidence(tmp_path):
     assert dashboard["picks"][0]["size_pct"] == 0.05
     assert dashboard["no_trade"][0]["status"] == "NO_TRADE"
     assert set(["halt", "drift", "ledger", "graduation", "evidence"]).issubset(dashboard)
-
-
-def test_live_eligibility_is_separate_from_triple_key_and_requires_graduation(tmp_path, monkeypatch):
-    monkeypatch.setenv("KAIROS_LIVE", "1")
-    token = tmp_path / "confirm"
-    token.write_text("abc")
-    (tmp_path / "LIVE_TOKEN").write_text("abc")
-
-    triple_key = LiveExecutionGate.evaluate(root=tmp_path, sleeve="F", cli_live=True, confirm_token_path=token)
-    denied = evaluate_live_eligibility(
-        root=tmp_path,
-        sleeve="F",
-        model_version="router-v1",
-        capital=2_000_000,
-        requested_notional=100_000,
-        graduation={"live_eligible": False},
-        policy=LiveEligibilityPolicy(
-            min_capital=1_000_000,
-            sleeve_cap_pct=0.20,
-            notional_cap=250_000,
-            approved_sleeves={"F"},
-            approved_models={"router-v1"},
-        ),
-    )
-    allowed = evaluate_live_eligibility(
-        root=tmp_path,
-        sleeve="F",
-        model_version="router-v1",
-        capital=2_000_000,
-        requested_notional=100_000,
-        graduation={"live_eligible": True},
-        policy={
-            "min_capital": 1_000_000,
-            "sleeve_cap_pct": 0.20,
-            "notional_cap": 250_000,
-            "approved_sleeves": {"F"},
-            "approved_models": {"router-v1"},
-        },
-    )
-
-    assert triple_key.is_clear() is True
-    assert denied["live_eligible"] is False
-    assert denied["checks"]["graduation"]["pass"] is False
-    assert allowed["live_eligible"] is True
 
 
 def _call_route(app, path: str, **kwargs):

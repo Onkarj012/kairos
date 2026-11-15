@@ -9,24 +9,30 @@ import sys
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from typing import Mapping
 from urllib.parse import parse_qs, quote, urlsplit
 
 REPO = Path(__file__).resolve().parents[1]
 if __package__ in {None, ""}:
     sys.path.insert(0, str(REPO))
 
-from ops.daily_runner import IST
-from ops.kite_broker import DEFAULT_TOKEN_PATH, KiteError, save_token
-from ops.telegram import read_env
+from ops.kite_login_support import DEFAULT_TOKEN_PATH, IST, KiteError, read_login_env, save_token
+
+
+def prepare_login_url(env: Mapping[str, str]) -> str:
+    """Build the Kite login URL from supplied settings without opening a browser or network connection."""
+    api_key, api_secret = env.get("KITE_API_KEY", ""), env.get("KITE_API_SECRET", "")
+    if not api_key or not api_secret:
+        raise KiteError("KITE_API_KEY and KITE_API_SECRET must be set in .env")
+    return f"https://kite.zerodha.com/connect/login?v=3&api_key={quote(api_key)}"
 
 
 def login(env_path: Path = REPO / ".env", token_path: Path = DEFAULT_TOKEN_PATH) -> None:
     """Accept one local callback and save today's Kite access token."""
-    env = read_env(env_path)
-    api_key, api_secret = env.get("KITE_API_KEY", ""), env.get("KITE_API_SECRET", "")
-    if not api_key or not api_secret:
-        raise KiteError("KITE_API_KEY and KITE_API_SECRET must be set in .env")
-    print(f"https://kite.zerodha.com/connect/login?v=3&api_key={quote(api_key)}")
+    env = read_login_env(env_path)
+    login_url = prepare_login_url(env)
+    api_key, api_secret = env["KITE_API_KEY"], env["KITE_API_SECRET"]
+    print(login_url)
 
     class CallbackHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
