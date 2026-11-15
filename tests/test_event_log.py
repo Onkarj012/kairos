@@ -1,15 +1,14 @@
-"""Tests for the durable append-only research event ledger."""
+"""Tests for the durable append-only retained event log."""
 from __future__ import annotations
 
-import json
 import threading
 
 import pytest
 
-from evidence.research_ledger import (
+from ops.event_log import (
     LedgerConflictError,
     LedgerError,
-    ResearchLedgerWriter,
+    EventLogWriter,
     from_json_line,
     read_events,
     to_json_line,
@@ -17,7 +16,7 @@ from evidence.research_ledger import (
 )
 
 
-def _append(writer: ResearchLedgerWriter, event_id: str, *, payload=None):
+def _append(writer: EventLogWriter, event_id: str, *, payload=None):
     return writer.append(
         event_id=event_id,
         event_type="JOB_STARTED",
@@ -29,7 +28,7 @@ def _append(writer: ResearchLedgerWriter, event_id: str, *, payload=None):
 
 
 def test_appended_events_form_a_valid_chain(tmp_path) -> None:
-    writer = ResearchLedgerWriter(tmp_path / "research.jsonl")
+    writer = EventLogWriter(tmp_path / "events.jsonl")
     events = tuple(_append(writer, f"event-{index}") for index in range(1, 4))
 
     assert [event.sequence for event in events] == [1, 2, 3]
@@ -40,8 +39,8 @@ def test_appended_events_form_a_valid_chain(tmp_path) -> None:
 
 
 def test_duplicate_event_id_with_identical_content_is_idempotent(tmp_path) -> None:
-    path = tmp_path / "research.jsonl"
-    writer = ResearchLedgerWriter(path)
+    path = tmp_path / "events.jsonl"
+    writer = EventLogWriter(path)
     first = _append(writer, "event-1")
     original = path.read_bytes()
 
@@ -53,7 +52,7 @@ def test_duplicate_event_id_with_identical_content_is_idempotent(tmp_path) -> No
 
 
 def test_duplicate_event_id_with_different_payload_conflicts(tmp_path) -> None:
-    writer = ResearchLedgerWriter(tmp_path / "research.jsonl")
+    writer = EventLogWriter(tmp_path / "events.jsonl")
     _append(writer, "event-1", payload={"value": 1})
 
     with pytest.raises(LedgerConflictError):
@@ -61,7 +60,7 @@ def test_duplicate_event_id_with_different_payload_conflicts(tmp_path) -> None:
 
 
 def test_unknown_event_type_is_rejected(tmp_path) -> None:
-    writer = ResearchLedgerWriter(tmp_path / "research.jsonl")
+    writer = EventLogWriter(tmp_path / "events.jsonl")
 
     with pytest.raises(LedgerError):
         writer.append(
@@ -71,8 +70,8 @@ def test_unknown_event_type_is_rejected(tmp_path) -> None:
 
 
 def test_payload_tampering_is_detected_by_read_and_verification(tmp_path) -> None:
-    path = tmp_path / "research.jsonl"
-    writer = ResearchLedgerWriter(path)
+    path = tmp_path / "events.jsonl"
+    writer = EventLogWriter(path)
     _append(writer, "event-1", payload={"state": "planned"})
     tampered = path.read_text(encoding="utf-8").replace('"planned"', '"changed"')
     path.write_text(tampered, encoding="utf-8")
@@ -84,8 +83,8 @@ def test_payload_tampering_is_detected_by_read_and_verification(tmp_path) -> Non
 
 
 def test_tail_removal_is_valid_but_middle_deletion_breaks_the_chain(tmp_path) -> None:
-    path = tmp_path / "research.jsonl"
-    writer = ResearchLedgerWriter(path)
+    path = tmp_path / "events.jsonl"
+    writer = EventLogWriter(path)
     events = tuple(_append(writer, f"event-{index}") for index in range(1, 4))
 
     path.write_text("".join(to_json_line(event) for event in events[:-1]), encoding="utf-8")
@@ -98,9 +97,9 @@ def test_tail_removal_is_valid_but_middle_deletion_breaks_the_chain(tmp_path) ->
 
 
 def test_new_writer_instance_resumes_the_existing_chain(tmp_path) -> None:
-    path = tmp_path / "research.jsonl"
-    first = _append(ResearchLedgerWriter(path), "event-1")
-    second = _append(ResearchLedgerWriter(path), "event-2")
+    path = tmp_path / "events.jsonl"
+    first = _append(EventLogWriter(path), "event-1")
+    second = _append(EventLogWriter(path), "event-2")
 
     assert second.sequence == 2
     assert second.previous_event_hash == first.event_hash
@@ -108,13 +107,13 @@ def test_new_writer_instance_resumes_the_existing_chain(tmp_path) -> None:
 
 
 def test_concurrent_writers_produce_one_valid_twenty_event_chain(tmp_path) -> None:
-    path = tmp_path / "research.jsonl"
+    path = tmp_path / "events.jsonl"
     barrier = threading.Barrier(2)
     failures: list[BaseException] = []
 
     def write(prefix: str) -> None:
         try:
-            writer = ResearchLedgerWriter(path)
+            writer = EventLogWriter(path)
             barrier.wait()
             for index in range(10):
                 _append(writer, f"{prefix}-{index}")
