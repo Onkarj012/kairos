@@ -1,20 +1,20 @@
 """Dashboard read model and server-rendered account pages, plus the local approvals page."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from html import escape
+import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 import pandas as pd
 
-from evidence.research_ledger import read_events
+from ops.event_log import read_events
 from ops.daily_account import AccountSpec, AccountView, DailyAccount
-from ops.daily_rules import TRADE_COLUMNS, Intent, equity_frame, trades_frame
-from ops.daily_runner import ANSWER_CUTOFF, Calendar, answer_cutoff
-from ops.halts import kill_switch_path
+from ops.account_core import TRADE_COLUMNS, Intent, equity_frame, trades_frame, kill_switch_path
+from ops.paper_calendar import ANSWER_CUTOFF, Calendar, answer_cutoff
 
 STYLE = """<style>
 body{font:15px/1.45 system-ui,-apple-system,sans-serif;color:#17212b;margin:0;background:#f4f6f8}
@@ -50,6 +50,7 @@ class AccountPage:
     equity: pd.DataFrame
     kill_switch: bool
     halt_log: list[dict[str, str]]
+    event_history: list[dict[str, str]] = field(default_factory=list)
 
     @property
     def pnl(self) -> float:
@@ -82,6 +83,18 @@ def load_account(accounts_root: Path, runner_root: Path, spec: AccountSpec) -> A
         equity=equity_frame(view.engine_events),
         kill_switch=kill_switch_path(runner_root, spec.account_id).exists(),
         halt_log=halt_log,
+        event_history=[
+            {
+                "session": str(event.payload.get("session", "")),
+                "event": event.event_type,
+                "detail": json.dumps(
+                    {key: value for key, value in event.payload.items() if key != "session"},
+                    sort_keys=True,
+                    ensure_ascii=False,
+                ),
+            }
+            for event in events
+        ],
     )
 
 
@@ -321,6 +334,7 @@ def render_account(page: AccountPage) -> str:
         f'{_nav()}<h1>{_e(page.spec.account_id)}</h1>'
         f'<section class="facts">{fact_html}</section>'
         f"<section><h2>Halts</h2>{halt_html}{switch}<h2>Halt history</h2>{history}</section>"
+        f"<section><h2>Event history</h2>{_table([('Session', False), ('Event', False), ('Details', False)], [[_e(e['session']), _e(e['event']), _e(e['detail'])] for e in page.event_history], 'No events.')}</section>"
         f"<section><h2>Equity after costs</h2>{equity_svg(curve, state.capital)}</section>"
         f"<section><h2>Open positions</h2>{positions}</section>"
         f"<section><h2>Open intents</h2>{intents}</section>"

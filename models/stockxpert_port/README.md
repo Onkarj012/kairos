@@ -39,7 +39,9 @@ last three eligible target rows use this unsmoothed fallback.
   median vector per symbol and attaches it to every sample. Future dates can
   therefore affect earlier samples' traits.
 - `scripts/train_v3.py:139, 170, 191` uses `bfill` after forward fill. A
-  later nonmissing value can fill an earlier gap.
+  later nonmissing value can fill an earlier gap in its market/macro inputs.
+  The copied `source/stockxpert/features/builder.py:74` also backfills
+  fundamentals; this is a separate path from the unvendored training script.
 - `dataset/make_samples.py:164-174` makes each feature window inclusive of
   row `t`; context also comes from `t`. This makes the centered h=1 target's
   inclusion of the return ending at `t` material.
@@ -62,7 +64,10 @@ config. I rejected a rewritten approximation because exact source was
 available. The training script itself stays out of the package because it
 contains the training and data-loading entry point. The copied feature builder
 imports indicator and event-calendar modules that were outside this source
-export; the leak test uses the exact pandas shift and centered rolling
-expression from the copied builder without importing those unrelated feature
-modules. The scaler source is copied but not runtime-tested because
+export; the leak test parses and executes the unchanged `_compute_targets`
+method from the copied builder's AST without importing the incomplete builder
+package or those unrelated feature modules. It holds the volatility reference
+and current/future prices fixed while perturbing the prior close. This checks
+the copied target implementation, not the complete feature pipeline. The scaler
+source is copied but not runtime-tested because
 scikit-learn is not installed in the approved environments.

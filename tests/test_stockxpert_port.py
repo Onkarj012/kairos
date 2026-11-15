@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import ast
 import math
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 
+import numpy as np
 import pandas as pd
 import torch
 
@@ -13,25 +17,49 @@ from models.stockxpert_port.source.stockxpert.v3.models.stockxpert import (
 
 class StockXpertPortTest(unittest.TestCase):
     def test_centered_horizon_one_target_changes_with_known_prior_move(self) -> None:
-        # Synthetic log closes only. At t=2, a centered width-three mean of
-        # h=1 raw returns reads [t-1, t, t+1].
-        closes = [0.0, 0.1, 0.3, 0.6, 0.8, 1.0]
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "models/stockxpert_port/source/stockxpert/features/builder.py"
+        )
+        module = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        builder = next(
+            node for node in module.body
+            if isinstance(node, ast.ClassDef) and node.name == "FeatureBuilder"
+        )
+        method = next(
+            node for node in builder.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_compute_targets"
+        )
+        isolated = ast.Module(body=[method], type_ignores=[])
+        namespace = {"np": np, "pd": pd}
+        exec(compile(isolated, str(source), "exec", dont_inherit=True), namespace)
+        compute_targets = namespace["_compute_targets"]
+        prices = np.exp(np.arange(30, dtype="float64") * 0.02)
+        frame = pd.DataFrame({
+            "Close": prices,
+            "High": prices * 1.01,
+            "Low": prices * 0.99,
+            "log_return": [0.02, -0.02] * 15,
+        })
+        sample = 15
+        changed = frame.copy()
+        changed.loc[sample - 1, "Close"] *= np.exp(0.03)
+        original = compute_targets(SimpleNamespace(horizons=[1]), frame)
+        perturbed = compute_targets(SimpleNamespace(horizons=[1]), changed)
 
-        def centered_target(values: list[float], t: int) -> float:
-            log_close = pd.Series(values, dtype="float64")
-            raw_dlog = log_close.shift(-1) - log_close
-            smoothed = raw_dlog.rolling(3, center=True).mean().fillna(raw_dlog)
-            return float(smoothed.iloc[t])
-
-        original = centered_target(closes, 2)
-        changed = closes.copy()
-        changed[1] += 0.3  # perturb only the already-known close at t-1
-        perturbed = centered_target(changed, 2)
-
-        self.assertAlmostEqual(original, (0.2 + 0.3 + 0.2) / 3.0)
-        self.assertAlmostEqual(perturbed, (-0.1 + 0.3 + 0.2) / 3.0)
-        self.assertNotAlmostEqual(original, perturbed)
-        self.assertEqual(closes[2:], changed[2:])
+        self.assertAlmostEqual(
+            original.loc[sample, "target_h1"] * original.loc[sample, "vol_ref"],
+            0.02,
+        )
+        self.assertAlmostEqual(
+            perturbed.loc[sample, "target_h1"] * perturbed.loc[sample, "vol_ref"],
+            0.01,
+        )
+        self.assertNotAlmostEqual(
+            original.loc[sample, "target_h1"], perturbed.loc[sample, "target_h1"]
+        )
+        pd.testing.assert_frame_equal(frame.iloc[sample:], changed.iloc[sample:])
+        pd.testing.assert_series_equal(original["vol_ref"], perturbed["vol_ref"])
 
     def test_model_forward_and_backward_on_dummy_cpu_inputs(self) -> None:
         torch.set_num_threads(2)

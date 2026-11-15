@@ -12,10 +12,40 @@ Entry format:
 
 ---
 
+## 2026-11-15 — Ticket 02 retains login in a minimal helper rather than retaining broker code for token utilities
+- rejected: keeping the old Kite broker and its order API solely to supply login constants and token persistence
+- why: preserve the standing one-tap login path, token JSON/private permissions and IST behavior without retaining the dropped runner or order machinery. Login checks use injected settings and temporary tokens only, not a real callback, account or network call.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; ticket 02 implementation `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket02-20261115-01`
+- status: active
+
+## 2026-11-15 — Serialize cleanup tickets 02 then 03 while independent source-port work continues
+- rejected: simultaneous deletion branches for runner/rules and research code with mixed callers/tests
+- why: ticket 01's merge unlocks both tickets, but old research backtest imports daily_rules and mixed tests cross their deletion scopes. Serial integration avoids broken intermediate caller assumptions without changing canonical prerequisites or delaying independent ticket 08 work.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; static import inspection at merged main b993634 on 2026-11-15 IST
+- status: active
+
 ## 2026-11-15 — Ticket 08 preserves exported V3 source with isolated imports and minimal package initializers
 - rejected: reconstructing the architecture from a paper summary, executing unseen Mac package startup code, or importing the real training script
 - why: exact hash-verified source is available, including the original model's ResidualBlock and RegimeDetector dependency. Preserve computational classes, normalize whitespace, redirect three absolute imports into `models.stockxpert_port`, and use docstring-only package initializers. Source and local-adaptation hashes plus the dirty training-script caveat are recorded in provenance.md. Only synthetic CPU forward/backward and target arithmetic are exercised. The full feature builder still needs unexported indicator/event-calendar modules; the scaler needs scikit-learn and is not runtime-tested. These limitations must not be reported as a verified training pipeline or model performance.
 - source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; ticket 08 implementation `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket08-20261115-01`
+- status: active
+
+## 2026-11-15 — Kept normalized calendars infer only omitted weekends inside their represented date range
+- rejected: rejecting every omitted weekend, inferring missing weekday sessions, or filling dates outside retained coverage
+- why: PR 11 Greptile review showed the existing normalized producer omits ordinary weekends, so explicit-date-only lookup incorrectly closed Friday approvals before reaching Monday. Keep the normalized sessions/manifest format and independence from retired proof modules, fill omitted in-range weekends as non-sessions, preserve explicit special weekend rows, and refuse missing weekdays or out-of-range dates. Calendar provisioning remains separate and unverified.
+- source: PR 11 review https://github.com/Onkarj012/kairos/pull/11#discussion_r4578749239; coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`
+- status: active
+
+## 2026-11-15 — Kept paper-calendar loading uses normalized session records, not the retired proof chain
+- rejected: importing old calendar-proof modules into kept dashboard code, requiring frozen runner-ledger artifacts, or guessing weekday sessions when calendar evidence is missing
+- why: independent ticket 01 review found those imports would break on ticket 03's authorized deletions. Read the existing `meridian.nse-calendar.public-v3` sessions/manifest format under `<derived-root>/calendar`, verify its count and hash, and use only explicitly listed session dates. Missing or invalid records close approvals without preventing read-only history. Existing retained artifacts are not converted here; approval timing needs this normalized artifact provisioned and validated separately. Restore existing-answer no-write retries before dashboard appends so cross-channel and opposite-answer retries preserve account/log behavior.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; review `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket01-review-20261115-r1`
+- status: superseded by 2026-11-15 — Kept normalized calendars infer only omitted weekends inside their represented date range
+
+## 2026-11-15 — Ticket 01 extracts neutral account/log/calendar modules and retains legacy compatibility callers
+- rejected: deleting legacy files in ticket 01, changing paper-log formats or forcing the dashboard through the old runner
+- why: preserve existing account folding and hash-chain history while making kept account/dashboard/API code independent of old strategy, sealed-test and runner imports. Legacy modules remain compatibility callers until tickets 02/03 remove them under their own scopes. Coordinator validation may read the existing absolute root virtual environment's installed dependencies without modifying that environment or the owner checkout.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; ticket 01 worker `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket01-20261115-01`
 - status: active
 
 ## 2026-11-15 — Live daily inputs exclude the morning request's session and require flat scalars; verified reads consume private snapshots
