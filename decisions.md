@@ -12,6 +12,12 @@ Entry format:
 
 ---
 
+## 2026-11-15 — Research cleanup ports retained regression coverage instead of deleting it with compatibility modules
+- rejected: treating every compatibility/checkpoint test as obsolete, or claiming helper-only tests prove dashboard route refusal
+- why: independent round-one review found lost coverage of kept hash-chain, dashboard and collector-budget safeguards. Keep direct event-log tests and pre-2025 synthetic route/CLI cases without restoring removed research gates. No production behavior change is needed for these coverage findings.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; ticket 03 review `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket03-review-20261115-r1`
+- status: active
+
 ## 2026-11-15 — Ticket 03 removes research-proof machinery while retaining neutral collector budget accounting
 - rejected: keeping the full legal/checkpoint research framework, dropping durable retry accounting with it, or banning all post-2024 account events
 - why: only seed-count validation and overlapping retained reservation counts are needed by the kept collector CLI. Extract those unchanged semantics into `ingest/acquisition_budget.py`; leave collector retries, reservations, integrity checks and normalized calendar production intact. Synthetic retained NSE bytes prove collector/panel behavior without reading stored data. Historical reader/evaluation protection remains separate from permitted live paper logging; inherited account constants are not promoted as current blind-boundary enforcement.

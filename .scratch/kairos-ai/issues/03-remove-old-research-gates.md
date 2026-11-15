@@ -42,14 +42,14 @@ Date: 2026-11-15 IST. Base: `6223a371124b30422909b7ad75631f4b3670b369`. Branch: 
 - `scripts/data/build_daily_session_ledger.py` — CLI for the removed qualified session-ledger chain.
 - `scripts/data/collect_daily_calendar.py` — CLI for the removed calendar-proof evidence store.
 - `scripts/research/run_daily_backtest.py` — CLI for the removed backtest, verdict, gate, trial, and sealed-year flow.
-- `tests/test_daily_acquisition_checkpoint.py` — tests only the removed denominator/recovery checkpoint.
+- `tests/test_daily_acquisition_checkpoint.py` — removed denominator/recovery cases; retained summary-validation and CLI-budget refusal cases move to `tests/test_research_cleanup.py`.
 - `tests/test_daily_baselines.py` — tests only the removed daily-rule baselines.
 - `tests/test_daily_calendar_evidence.py` — tests only the removed calendar-proof source store.
 - `tests/test_daily_rules_backtest.py` — old rule/backtest tests; the kept cost-model tests remain in `tests/test_costs.py`.
 - `tests/test_daily_sealed_and_gates.py` — tests only the removed gate, trial, and sealed-year behavior.
 - `tests/test_daily_session_ledger.py` — tests only the removed qualified session-ledger chain.
 - `tests/test_daily_verdict.py` — tests only the removed fixed-fold verdict and trial flow.
-- `tests/test_research_ledger.py` — tests only the removed research event log.
+- `tests/test_research_ledger.py` — removed compatibility-module imports; all eight hash-chain/idempotence/conflict/tamper/restart/concurrency cases move to direct `ops.event_log` tests in `tests/test_event_log.py`.
 
 ### Kept collector, panel, and dashboard
 
@@ -60,6 +60,27 @@ Cleared old gate/backtest lazy exports from `evidence/__init__.py`, since the in
 Replaced the mixed `tests/test_dashboard_accounts.py` legacy-runner cases with retained account listing, account event-history/halt, and unknown-account checks over synthetic pre-2025 events. Added `tests/test_research_cleanup.py` for the collector's injected fake fetch and budget preservation, synthetic retained-byte panel build, and dashboard-origin behavior. Historical account date enforcement remains a handoff: `ops/daily_account.py` still has its inherited 2025-10-01 through 2026-09-30 guard; no blanket post-2024 guard was introduced because it would block live paper logging. Ticket 04 must handle historical reader/evaluation policy at its boundary while preserving live paper records.
 
 ### Validation and limits
+
+Round-one review found lost coverage for kept behavior, not demonstrated
+production failures. Restored all eight old event-log cases against the retained
+writer; standalone dashboard anti-framing, 08:40 cutoff/no-write, origin/referrer,
+zero-share closed-trade, open/skipped trade separation, API/cost/rendering checks;
+and corrupt/non-object/negative budget summaries plus the actual collector CLI's
+exhaustion refusal before collection. All fixtures use pre-2025 synthetic events,
+except the existing explicit held-out refusal test. No production fixes were
+needed. The exact audited CLI source is permitted read-only in the local guard;
+its cached bytecode is refused to force source execution. No general `data`
+directory exception or network permission was introduced. Initial collection
+refused the CLI cache; no real artifact was read. Independent round-two recheck
+is required before PR. Actual stored-panel rebuild and calendar provisioning
+remain unverified.
+
+Latest fix selection: **37 passed in 1.52s**, zero safety refusals, with a private
+temporary directory and the 27-local-file audited import closure. Exact files:
+`tests/test_event_log.py tests/test_research_cleanup.py tests/test_dashboard_accounts.py tests/test_costs.py tests/test_kept_parts.py tests/test_kept_safeguards.py`.
+This excludes `tests/test_daily_cash.py`, whose older accepted synthetic fixtures
+include 2026 dates; those dates were outside the first review's narrower brief.
+No current-head full-suite claim is made.
 
 Coordinator independently reproduced the six-file selection: **37 passed in 1.81s**, zero safety refusals, after re-auditing the 26-local-file import closure. The neutral budget functions match the prior count-validation/overlap semantics; actual stored data was not read. The collector CLI's direct-file startup was subsequently exercised with `--help` under isolated Python and network/artifact refusals, allowing only the audited script source through the path-component `data` guard: it exited 0 with zero safety refusals. This supersedes the earlier inability to invoke the CLI reported below; it proves startup/imports only. Actual acquisition, stored-panel rebuild, calendar provisioning and live behavior remain unverified. Independent current-head Sol high review is required before PR.
 

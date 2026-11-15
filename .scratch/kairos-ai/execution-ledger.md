@@ -1,5 +1,16 @@
 # Kairos AI execution ledger
 
+Ticket 03 round-one coverage checkpoint, 2026-11-15 IST: restored direct retained
+event-log safeguards, dashboard route/no-write/trade-rendering regressions and
+actual CLI exhausted-budget refusal with malformed-summary cases. Only tests
+and explanatory metadata change from reviewed bfd141b. No production failure
+was demonstrated or production fix added. Fresh exact-head recheck required.
+Current restored selection: 37 passed in 1.52s, zero safety refusals, 27 local
+files audited. This is a different selection from the earlier 37-test run.
+Ticket 14's scoped fixes are independently approved at c10cefc and are now PR
+https://github.com/Onkarj012/kairos/pull/14, awaiting current-head remote review.
+14 remains incomplete, 15 blocked; 04/05/17 evidence gaps remain unchanged.
+
 Research cleanup checkpoint, 2026-11-15 IST: ticket 02 PR13 merged6223a37 with scoped cleanup evidence accepted; ticket 03 worker committed `2dccb71` from that base. Coordinator inspected the 31-path deletion/extraction scope and reproduced 37 explicit synthetic tests in1.81s after auditing26localfiles, zero safety refusals. Collector CLI `--help` separately passed isolated startup with only its audited script source exempted from the generic path-component guard; no acquisition/data access occurred. Actual stored-panel rebuild, calendar provisioning and live behavior remain unverified. Current-head independent review is next. Ticket14 infrastructure is paused at bf4e40d in its own checkout for independent review: six synthetic checks, unconfigured held CLI, no installation/activation; external alert/reminder/real handlers absent, so14incomplete15blocked. Ticket04 remains incomplete and05/17blocked.
 
 PR 13 feedback checkpoint, 2026-11-15 IST: Greptile reviewed remote `2f19c9d` at 4/5 and correctly found that deleting the mixed runner test file also removed three standalone kept safeguards. Coordinator restored them in isolated `tests/test_kept_safeguards.py`: truncated Telegram reply handling, synthetic-token-safe errors/repr, and synthetic legacy-holdout account refusal with no log write. Telegram calls are intercepted with a fake opener; no network/account/vault data is used. Audited 44 local transitive files and reran exactly five approved files: 19 passed in 2.90s, zero safety refusals. The narrower integration-only review at 6c62c81 was canceled before this superseding test change; a fresh combined integration/fix review must pass before push. No production code changed for this finding. PR 13 remains watched; no merge on its older head.

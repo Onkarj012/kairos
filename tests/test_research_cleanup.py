@@ -11,6 +11,7 @@ from ingest.acquisition_budget import CheckpointError, aggregate_seed_counts
 from ingest.daily_panel import build_panel
 from ingest.daily_cash import HttpResponse, collect_daily_cash, nse_sec_bhavdata_full_url
 from serve.api import trusted_origin
+from scripts.data import collect_daily_cash as collector_cli
 
 
 def test_collector_budget_merges_seed_and_retained_attempts_without_reset(tmp_path: Path) -> None:
@@ -100,3 +101,28 @@ def test_collector_budget_rejects_malformed_attempt_counts(tmp_path: Path) -> No
     seed.write_text(json.dumps({"urls": {"url": {"attempts": True}}}), encoding="utf-8")
     with pytest.raises(CheckpointError, match="non-negative integer"):
         aggregate_seed_counts(seed, ())
+
+
+def test_collector_budget_rejects_corrupt_non_object_and_negative_counts(tmp_path: Path) -> None:
+    seed = tmp_path / "budget.json"
+    for encoded in ('{not json', '[]', '{"urls":{"u":{"attempts":-1}}}'):
+        seed.write_text(encoded, encoding="utf-8")
+        with pytest.raises(CheckpointError):
+            aggregate_seed_counts(seed, ())
+
+
+def test_collector_cli_refuses_exhausted_budget_before_collection(tmp_path, monkeypatch):
+    session = date(2024, 1, 2)
+    url = nse_sec_bhavdata_full_url(session)
+    seed = tmp_path / "budget.json"
+    seed.write_text(json.dumps({"urls": {url: {"attempts": collector_cli.PLAN_ATTEMPT_LIMIT}}}))
+    calls = []
+
+    def forbidden(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("collector must not be invoked with exhausted budget")
+
+    monkeypatch.setattr(collector_cli, "collect_daily_cash", forbidden)
+    with pytest.raises(SystemExit, match="durably exhausted"):
+        collector_cli.main(["--date", session.isoformat(), "--output-root", str(tmp_path / "cash"), "--seed-budget", str(seed)])
+    assert calls == []
