@@ -23,11 +23,13 @@ def read_live_inputs(
     input_columns: tuple[str, ...],
     sessions: int = 60,
 ) -> list[dict[str, Any]]:
-    """Read only the last 60 session packs dated on or before ``as_of``.
+    """Read only the last 60 completed session packs strictly before ``as_of``.
 
-    Each child pack is one session and contains input columns only. Directory
-    names are the public date index, so future session files are never opened
-    or parsed while answering an earlier request.
+    ``as_of`` is the morning request's trading date, not an inclusive last
+    session date. Today's close is never available to that morning's picks.
+    Each child pack is one completed session and contains flat inputs only.
+    Directory names are the public date index, so same-day and future session
+    files are never opened or parsed while answering a morning request.
     """
     if sessions < 1 or sessions > 60:
         raise ValueError("live input window must be between 1 and 60 sessions")
@@ -51,7 +53,7 @@ def read_live_inputs(
             session_date = date.fromisoformat(entry.name)
         except ValueError:
             continue
-        if session_date <= as_of:
+        if session_date < as_of:
             dated_dirs.append((session_date, entry))
     selected = sorted(dated_dirs, key=lambda item: item[0])[-sessions:]
 
@@ -63,6 +65,8 @@ def read_live_inputs(
         if manifest.first_date != session_date.isoformat() or manifest.last_date != session_date.isoformat():
             raise ValueError("live pack date must match its session directory")
         for row in read_verified_pack(pack_path, expected_partition="live"):
+            if date.fromisoformat(str(row["date"])[:10]) != session_date:
+                raise ValueError("live row date must match its selected completed session")
             missing = set(input_columns) - row.keys()
             if missing:
                 raise ValueError(f"requested input columns are missing: {sorted(missing)}")

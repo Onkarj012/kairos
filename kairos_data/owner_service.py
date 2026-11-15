@@ -105,7 +105,8 @@ def authorize_and_audit(
     path = Path(audit_log)
     if path.is_symlink():
         raise ValueError("audit log cannot be a symlink")
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.parent.is_dir():
+        raise FileNotFoundError("audit directory must be durably provisioned before authorization")
     flags = os.O_CREAT | os.O_APPEND | os.O_RDWR
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
@@ -141,6 +142,11 @@ def authorize_and_audit(
                 log.write(json.dumps(asdict(audit), sort_keys=True, separators=(",", ":")) + "\n")
                 log.flush()
                 os.fsync(fd)
+                parent_fd = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+                try:
+                    os.fsync(parent_fd)
+                finally:
+                    os.close(parent_fd)
                 return audit
             finally:
                 fcntl.flock(fd, fcntl.LOCK_UN)

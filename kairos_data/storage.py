@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import date
 from enum import StrEnum
+import errno
 import hashlib
 import json
 import os
@@ -13,7 +14,7 @@ import re
 import shutil
 import stat
 import tempfile
-from typing import Iterable, Iterator, Mapping, Any
+from typing import BinaryIO, Iterable, Iterator, Mapping, Any
 
 
 class PackKind(StrEnum):
@@ -68,6 +69,8 @@ def _validate_partition_row(row: Mapping[str, Any], kind: PackKind, partition: s
             raise ValueError("live input packs must use daily rows")
         if any(_FORBIDDEN_LIVE_KEY.search(str(key)) for key in row):
             raise ValueError("live input packs cannot store labels, answers, future fields, scores, or returns")
+        if any(not isinstance(value, (str, int, float, bool, type(None))) for value in row.values()):
+            raise ValueError("live input packs require flat scalar values")
     return row_date
 
 
@@ -91,7 +94,9 @@ def _read_manifest(directory: Path) -> PackManifest:
         raise ValueError("invalid pack manifest") from exc
 
 
-def _verify(directory: Path, expected_partition: str | None = None) -> tuple[PackManifest, Path]:
+def _verify(
+    directory: Path, expected_partition: str | None = None, *, snapshot: BinaryIO | None = None
+) -> tuple[PackManifest, Path]:
     if directory.is_symlink() or not directory.is_dir():
         raise ValueError("pack must be a regular directory, not a symlink")
     manifest = _read_manifest(directory)
@@ -113,6 +118,8 @@ def _verify(directory: Path, expected_partition: str | None = None) -> tuple[Pac
     with rows_path.open("rb") as source:
         for raw in source:
             digest.update(raw)
+            if snapshot is not None:
+                snapshot.write(raw)
             try:
                 row = json.loads(raw)
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -142,8 +149,9 @@ def _read_pack_rows(
 ) -> Iterator[dict[str, Any]]:
     """Internal verified reader used by ordinary readers and owner service."""
     pack_dir = Path(directory)
-    _manifest, rows_path = _verify(pack_dir, expected_partition)
-    with rows_path.open("rb") as source:
+    with tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024, mode="w+b") as source:
+        _verify(pack_dir, expected_partition, snapshot=source)
+        source.seek(0)
         for raw in source:
             row = json.loads(raw)
             if not isinstance(row, dict):
@@ -230,7 +238,13 @@ def write_pack(
             if _existing_matches(destination, manifest):
                 return manifest
             raise FileExistsError(f"refusing to replace different pack at {destination}")
-        os.replace(staging, destination)
+        try:
+            os.replace(staging, destination)
+        except OSError as exc:
+            if exc.errno not in {errno.EEXIST, errno.ENOTEMPTY}:
+                raise
+            if not _existing_matches(destination, manifest):
+                raise FileExistsError(f"refusing to replace different pack at {destination}") from exc
         parent_fd = os.open(destination.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
         try:
             os.fsync(parent_fd)
