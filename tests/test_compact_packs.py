@@ -127,6 +127,16 @@ class CompactPackTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             write_pack(pack, [row("2024-12-31", 200)], kind="daily", partition="pre2025", encoding="parquet")
 
+    def test_nullable_columns_roundtrip_and_frozen_null_type_refuses_drift(self):
+        rows = [{**row("2024-12-30"), "optional": None}, {**row("2024-12-31"), "optional": None}]
+        pack = self.root / "nullable"
+        write_pack(pack, rows, kind="daily", partition="pre2025", encoding="parquet", row_group_size=1)
+        self.assertEqual(list(read_verified_pack(pack, expected_partition="pre2025")), rows)
+        drifting = self.root / "nullable-drift"
+        with self.assertRaisesRegex(ValueError, "type inconsistency"):
+            write_pack(drifting, [rows[0], {**rows[1], "optional": 1}], kind="daily", partition="pre2025", encoding="parquet", row_group_size=1)
+        self.assertFalse(drifting.exists())
+
     def test_live_parquet_schema_and_date_boundary(self):
         from kairos_data import read_live_inputs
         live = self.root / "live"

@@ -1,4 +1,4 @@
-"""Checksummed, immutable JSONL packs for daily and minute observations."""
+"""Checksummed, immutable JSONL and Parquet daily and minute packs."""
 
 from __future__ import annotations
 
@@ -245,7 +245,7 @@ def _write_parquet(path: Path, rows: Iterable[Mapping[str, Any]], *, row_group_s
 
 
 def _parquet_metadata(names, types):
-    schema = [{"name": name, "type": str(_arrow_type(_type_name(types[name])))} for name in names]
+    schema = [{"name": name, "type": str(_arrow_type(_type_name(types[name] or type(None))))} for name in names]
     return {
         b"kairos.encoding": b"parquet-v1",
         b"kairos.schema": json.dumps(schema, separators=(",", ":")).encode(),
@@ -279,9 +279,6 @@ def _check_types(row, types, *, frozen: bool = False):
                 types[name] = type(value)
             elif type(value) is not types[name]:
                 raise ValueError("Parquet row type inconsistency")
-
-
-
 
 def _verify(
     directory: Path, expected_partition: str | None = None, *, snapshot: BinaryIO | None = None

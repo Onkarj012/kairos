@@ -12,6 +12,12 @@ Entry format:
 
 ---
 
+## 2026-11-15 — Ticket 04 uses manifest-selected Parquet alongside backward-compatible default JSONL
+- rejected: JSONL-only minute storage, guessing encoding from extensions, adding a new dependency, or declaring vault protection and capacity proven from synthetic packs
+- why: compact columnar support uses the already-declared pyarrow dependency through existing training/live reader boundaries, bounded batches and verified byte snapshots. Explicit encoding and scalar-schema metadata select and validate the reader. Missing encoding still means version-1 JSONL. This supersedes only the earlier provisional JSONL-only encoding choice; per-session live packs and the separate owner-service boundary remain. No real migration, storage-capacity proof, OS isolation or multi-pack opening is provided; 04 remains incomplete and 05/17 blocked.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; implementation `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket04-compact-20261115-01`
+- status: active implementation choice; independent review and actual acceptance evidence pending
+
 ## 2026-11-15 — Research cleanup ports retained regression coverage instead of deleting it with compatibility modules
 - rejected: treating every compatibility/checkpoint test as obsolete, or claiming helper-only tests prove dashboard route refusal
 - why: independent round-one review found lost coverage of kept hash-chain, dashboard and collector-budget safeguards. Keep direct event-log tests and pre-2025 synthetic route/CLI cases without restoring removed research gates. No production behavior change is needed for these coverage findings.
@@ -88,7 +94,7 @@ success before a fallible log write because either hides failure. Source: ticket
 - rejected: declaring ticket 04 complete from synthetic tests, using a Python password/private name as vault security, or treating uncompressed JSONL as proven compact minute storage
 - why: the initial implementation uses standard-library JSONL packs with checksummed manifests and per-session live packs, avoiding new dependencies while checking date refusal and bounded input projection. These are provisional infrastructure choices, not accepted 439-million-row storage or migration evidence. A dedicated owner-service OS identity and authenticated IPC remain necessary; no such service is deployed. Real partition counts/checksums and enforced filesystem separation must be accepted before 05/17 unlock. Ticket 17 must demonstrate compact source-preserving packing within storage limits, not blindly expand minute data into JSONL.
 - source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; ticket 04 worker `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket04-20261115-01`
-- status: active
+- status: JSONL-only encoding superseded by 2026-11-15 manifest-selected Parquet alongside backward-compatible default JSONL; isolation, migration and per-session live requirements remain active
 
 ## 2026-11-15 — Ticket 08 uses an isolated CPU-only check environment and complete hash-verified Mac source, not a summary reconstruction
 - rejected: reconstructing the published model from a helper summary, treating missing dependencies as a completed model check, installing a GPU stack or modifying shared project environments
