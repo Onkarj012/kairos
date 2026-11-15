@@ -4,21 +4,23 @@ Canonical ticket `Status:` labels remain triage state as defined in `../../docs/
 
 The default prerequisite is **merged code plus accepted evidence**. Code merged by itself does not satisfy evidence gates. Evidence is tracked separately as (1) code merged, (2) actual training artifacts and accepted research evidence, and (3) elapsed paper records with their scorecards. No model or trading claim follows merely from a code merge. No stacked PRs: a dependent ticket starts from the merged current head.
 
-Initial shared-resource status: all unclaimed. Permit one heavy training job at a time. Serialize external data writes, model-registry writes, GPU use, and paper-account writes. Keep raw data and large weights out of Git.
+Shared-resource status on 2026-11-15: no heavy training, real-data migration, registry, or paper-account writer is authorized or running. Ticket 08 uses a private CPU-only dummy-check runtime, with at most 2 GB new disk use and at least 8 GB left free; no GPU stack or shared environment writes. Permit one heavy training job at a time. Serialize external data writes, model-registry writes, GPU use, and paper-account writes. Keep raw data and large weights out of Git.
+
+Setup merged as `31cd294937636777641fb02c46bc24b6488edac3`. Its final head `88673c8` received independent Sol high approval and Greptile 5/5, the applicable check passed, CodeRabbit explicitly skipped automatic review, and all review threads were resolved. Setup evidence is accepted. Coordinator and new workers use this updated-main base. The owner root checkout and its local changes remain untouched. This coordinator-only working ledger update will accompany a later independently reviewed implementation PR, not a direct main commit.
 
 Initial disjoint implementation scopes after setup: ticket 01 owns operations/account/dashboard/contracts and relevant tests; ticket 04 owns a new isolated vault, readers, tests, and docs without wiring unrelated modules; ticket 08 owns a new model-port namespace, tests, and audit only, with the source Mac read-only. Recheck actual file/import overlap before dispatch; do not presume the scopes remain disjoint.
 
 | Ticket | Execution state | Thread link | Branch | PR | Required evidence | Blockers |
 |---|---|---|---|---|---|---|
-| Setup | post-PR review fix | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-setup-20261115-01` | `t3/kairos-ai-setup` | https://github.com/Onkarj012/kairos/pull/9 | Static checks and pre-PR Sol approval at 2627bbc; Greptile target/stop ambiguity correction needs current-head review | Current-head independent approval and bot requirements |
-| 01 | awaiting setup | — | — | — | Focused audited tests; kept parts independent; no deletions | setup |
+| Setup | merged, evidence accepted | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-setup-20261115-01` | `t3/kairos-ai-setup` | https://github.com/Onkarj012/kairos/pull/9 | Merge 31cd294; static checks; exact-head Sol approval; Greptile 5/5; no unresolved threads | none |
+| 01 | implementing, Luna high | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket01-20261115-01` | `t3/kairos-ai-01-kept-parts` | none | Focused audited tests; kept parts independent; no deletions | none, setup accepted |
 | 02 | blocked | — | — | — | Removed-file reasons; isolated behavior; no sealed-module path | 01 |
 | 03 | blocked | — | — | — | Panel/collector behavior; old sealed module removed with audited references | 01 |
-| 04 | awaiting setup | — | — | — | Vault checksum/count and synthetic refusal; no score computation | setup |
+| 04 | infrastructure committed, independent review pending; evidence incomplete | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket04-20261115-01` | `t3/kairos-ai-04-blind-vault` | none | Implementation 74768ad; coordinator reran 11 synthetic unittest cases with isolated stdlib startup; diff check passed; no actual migration | Dedicated owner-service OS/IPC enforcement and real partition/count/checksum evidence absent; 05/17 remain blocked |
 | 05 | blocked | — | — | — | Dataset rows/counts, three checks, masked ambiguous target/stop answers | 04 |
 | 06 | blocked | — | — | — | Yardstick results table and run records | 05 |
 | 07 | blocked | — | — | — | Table model artifact and tuning evidence | 06 |
-| 08 | awaiting setup | — | — | — | Dummy forward/backward pass and code audit; source Mac read-only | setup |
+| 08 | awaiting existing helper source export | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket08-20261115-01` | `t3/kairos-ai-08-stockxpert-port` | none | Worker reports private CPU torch 2.11.0+cpu runtime ready at /tmp/kairos-ai-08-runtime, about 716 MB and 9.4 GB free; no model test or commit yet | Full exact-source follow-up pending; still require verified port and actual dummy forward/backward plus synthetic leak proof |
 | 09 | blocked | — | — | — | Five-encoder model artifact and tuning evidence | 06, 07, 08 |
 | 10 | blocked | — | — | — | One-reader model artifact and tuning evidence | 09 |
 | 11 | blocked | — | — | — | Swing picks output and focused tests | 07 |
