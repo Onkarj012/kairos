@@ -10,19 +10,19 @@ Initial disjoint implementation scopes after setup: ticket 01 owns operations/ac
 
 | Ticket | Execution state | Thread link | Branch | PR | Required evidence | Blockers |
 |---|---|---|---|---|---|---|
-| Setup | pre-PR review fixes | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-setup-20261115-01` | `t3/kairos-ai-setup` | none | Static setup checks passed; review round 1 found five defects; fixes require current-head recheck | Independent Sol high approval before PR |
+| Setup | post-PR review fix | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-setup-20261115-01` | `t3/kairos-ai-setup` | https://github.com/Onkarj012/kairos/pull/9 | Static checks and pre-PR Sol approval at 2627bbc; Greptile target/stop ambiguity correction needs current-head review | Current-head independent approval and bot requirements |
 | 01 | awaiting setup | — | — | — | Focused audited tests; kept parts independent; no deletions | setup |
 | 02 | blocked | — | — | — | Removed-file reasons; isolated behavior; no sealed-module path | 01 |
 | 03 | blocked | — | — | — | Panel/collector behavior; old sealed module removed with audited references | 01 |
 | 04 | awaiting setup | — | — | — | Vault checksum/count and synthetic refusal; no score computation | setup |
-| 05 | blocked | — | — | — | Dataset rows/counts and three checks | 04 |
+| 05 | blocked | — | — | — | Dataset rows/counts, three checks, masked ambiguous target/stop answers | 04 |
 | 06 | blocked | — | — | — | Yardstick results table and run records | 05 |
 | 07 | blocked | — | — | — | Table model artifact and tuning evidence | 06 |
 | 08 | awaiting setup | — | — | — | Dummy forward/backward pass and code audit; source Mac read-only | setup |
 | 09 | blocked | — | — | — | Five-encoder model artifact and tuning evidence | 06, 07, 08 |
 | 10 | blocked | — | — | — | One-reader model artifact and tuning evidence | 09 |
 | 11 | blocked | — | — | — | Swing picks output and focused tests | 07 |
-| 12 | blocked | — | — | — | Honest swing replay results and date refusal | 11 |
+| 12 | blocked | — | — | — | Honest swing replay, conservative ambiguous-bar counts, and date refusal | 11 |
 | 13 | blocked | — | — | — | Risk-state tests and documented loss budget | 12 |
 | 14 | blocked | — | — | — | Timers, lock, heartbeat, and missing-token evidence | 02 |
 | 15 | blocked | — | — | — | Swing stage 1 elapsed paper record and acceptance evidence | 13, 14 |

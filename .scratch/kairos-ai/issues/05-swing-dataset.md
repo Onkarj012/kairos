@@ -15,6 +15,7 @@ Gaps never stop work: a missing input is marked as missing and the model is told
 
 - [ ] The dataset builds from the existing panel through the vault-safe reader, and no row is dated 2025 or later.
 - [ ] Answers near a period edge never cross into the next period (the 10-day gap is enforced and tested).
+- [ ] Share the daily-bar target/stop ambiguity rule with ticket 12: if the open lies between target and stop and the same bar touches both, the target-before-stop answer is unknown and masked from training/scoring, with the count reported. Other valid answers remain usable. Synthetic tests cover target-only, stop-only, both-touched, and observed opening-gap cases; never infer touch order from the close or candle direction.
 - [ ] Stock traits and scaling are worked out from past data only, and gaps are never filled from later dates. A test plants a future value and fails if it leaks.
 - [ ] Each of the three checks prints a count, the full run takes minutes, and none of them stops the build over gaps.
 - [ ] Stocks with too little history are left out and counted. Delisted stocks stay in.

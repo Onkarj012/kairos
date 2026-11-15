@@ -141,6 +141,8 @@ Inputs, built in three steps so that step 1 is enough to start:
 
 What the model learns to predict (the "answers" in training) is computed from the days after each row: next-day direction and move, 5 and 10 day move, the highs and lows reached, and whether target came before stop.
 
+Daily bars cannot establish the order of touches when the open is between target and stop and both are reached in the same session. Mark the target-before-stop answer unknown and mask that answer from training and scoring; keep other valid answers and report the ambiguous count. Do not guess from the close or candle direction. The replay uses the same ambiguity classification but settles an ambiguous open position conservatively as stop-first, never target-first. Record this assumption and the affected trade count. An observed opening gap through a stop is handled at the opening price with applicable costs and slippage, not at a better stop price. Future minute data may establish event order only when available under the same date and information restrictions.
+
 **More history.** Training data before 2025 is only five and a quarter years, and it contains one crash (2020) and one long rise. NSE publishes daily price files going back much further. Extending to 2010 would roughly triple the training data and add several more market moods. This is the single most valuable data task. It is not needed to start.
 
 **Minute data.** Already on hand on the Mac at `/Users/onkarj012/Projects/market/intranet_optinet/data/nifty500`: 536 files, 439 million rows, 531 stocks, February 2015 to June 2026. It gives three things: (a) daily prices back to 2015, nearly doubling the training history; (b) what the intraday style needs; (c) ripple tests at the speed of minutes, where the effect should be strongest. Open points: this machine has 11 GB free, so the files are packed into a compact format on the Mac first (expected a few GB); whether the prices are adjusted for splits is not yet known and is checked against the daily panel; the 2025 and 2026 part goes straight into the blind vault. The paid Zerodha subscription is then needed only to keep it current and to fill missing stocks.
@@ -200,6 +202,7 @@ A **backtest** replays history day by day: each evening the model sees only the 
 
 **Making the replay honest.**
 - A buy order inside the day's range is not assumed to fill. It fills only if the price traded through it, and never on a day the stock was locked at its **price band**.
+- Use the daily-bar ambiguity rule from section 5 for target/stop ordering: unknown masked training answer, conservative stop-first replay for an open position, with counts reported. Apply the entry-fill rule independently; ambiguity handling does not create a fill.
 - Costs are charged in full: tax on the trade (**STT**), stamp duty, exchange fees, the fixed charge for selling shares held overnight (**DP charge**, Rs 15.34), and an allowance for getting a slightly worse price than planned (**slippage**).
 - Tax on profits is included.
 - Stocks that were later delisted stay in the history, so the test is not flattered by survivors only.

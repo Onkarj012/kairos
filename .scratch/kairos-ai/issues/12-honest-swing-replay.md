@@ -14,5 +14,6 @@ The report shows accuracy at each confidence level with the count kept; average 
 
 - [ ] Replays 2023 and 2024 with the table model and writes the report to the results table.
 - [ ] A test order inside the day's range that the price never traded through stays unfilled. A locked day never fills.
+- [ ] Reuse ticket 05's daily-bar ambiguity classification. For an open position whose bar opens between target and stop and touches both, assume stop-first, report the affected count and assumption, and test it synthetically. Never count target-first without event-order evidence. An observed opening gap through a stop uses the opening price plus applicable costs/slippage, not a better stop price. This rule never creates an otherwise unconfirmed entry fill.
 - [ ] Every cost line appears separately in the report. A doubled-cost run is included as a stress case.
 - [ ] Refuses any date on or after 2025-01-01. The blind run in ticket 30 goes through the vault instead.

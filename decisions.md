@@ -12,6 +12,12 @@ Entry format:
 
 ---
 
+## 2026-11-15 — Daily bars with unknown target/stop order use masked training answers and conservative stop-first replay
+- rejected: guessing intraday order from the close or candle direction, training on guessed answers, or reporting target-first gains without event-order evidence
+- why: Greptile's setup PR review identified that a daily bar opening between target and stop can touch both without showing which came first. Tickets 05 and 12 share one ambiguity classification. Keep other valid training answers, count and mask the ambiguous target-before-stop answer, and settle an ambiguous open position stop-first in replay. Observed opening gaps through a stop use the opening price with costs/slippage. Entry-fill eligibility remains independent. Later minute data may resolve order only within the existing date and information restrictions.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; PR review https://github.com/Onkarj012/kairos/pull/9#discussion_r4578505419
+- status: active
+
 ## 2026-11-15 — Calibration and replay producers must pass before dependent model work; setup restrictions do not ban authorized later tickets
 - rejected: starting 09 without 07 calibration/table-model evidence, 26 without 12 swing replay, or 28 without 21 same-day replay; making setup-only training and Mac restrictions permanent
 - why: independent pre-PR review found these missing prerequisites and conflicting safety instructions. Add the three edges to tickets and execution ledger. Permit only audited explicit synthetic tests during cleanup, including startup and plugin audits. Later ticket-scoped pre-2025 training, read-only Mac source transfer for 08, and source-preserving output packing for 17 remain authorized. No agent opens the vault or scores held-out dates; live broker/account calls and deployment remain unauthorized. Restore the data-symlink ignore rule and owner-only resume permission.
