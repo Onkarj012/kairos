@@ -13,3 +13,11 @@ Live use (agreed 2026-11-15): the daily picks job may read recent prices, but on
 - [ ] Opening the vault through the final-test call writes a log line (date, model fingerprint, reason). Opening it any other way fails.
 - [ ] The live input reader can get the last 60 sessions for building today's rows, but cannot get future answers or scores. A test proves this.
 - [ ] The minute prices (ticket 17) can be added to the same vault later without code changes.
+
+## Implementation note (2026-11-15 IST)
+
+Added `kairos_data/` with immutable checksummed JSONL pack storage, separate pre-2025 and live readers, a generic daily/minute pack kind, and a separate owner-service policy/opening interface. Synthetic tests cover partition boundaries, pre-2025 row counts and checksums, idempotent retries, live input projection and the 60-session bound, minute-pack compatibility, and audit policy. No held-out file was opened and no source-data migration was run.
+
+The final-test Python entry point is not sufficient security by itself. A production owner service must run under a separate OS identity and accept requests through OS-authenticated IPC; same-user arbitrary code can bypass Python interfaces and file modes. The deployment adapter and OS isolation are not implemented here. Real source partition/count/checksum evidence is also outstanding, so this infrastructure commit does not complete ticket 04 or unlock tickets 05/17. The coordinator should integrate the package design choices into `decisions.md` before independent review.
+
+Design choices for the coordinator to log: use stdlib JSONL with one manifest per immutable pack rather than Parquet or a database, to avoid new dependencies and keep checksums/counts explicit; store live inputs as one daily pack per session rather than scan a combined file, so a request can select its date window before opening data; keep the owner opening entry point out of package initialization, with a separate OS service boundary rather than Python names/flags as authorization. Alternatives were rejected for dependency/setup cost, unbounded reads of later sessions, and same-user Python bypass respectively. Source: implementation thread on ticket 04, 2026-11-15 IST.
