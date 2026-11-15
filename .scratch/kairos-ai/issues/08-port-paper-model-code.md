@@ -6,7 +6,28 @@
 
 **Status:** ready-for-agent
 
-- [ ] The model builds and does one forward and backward pass on dummy data on this machine's graphics card (GTX 1650, 4 GB), or on the CPU if the card is unavailable.
-- [ ] A one-page note says yes or no on the smoothing leak, with the synthetic test that shows it.
-- [ ] The note also lists the paper's two smaller leaks (stock traits from the whole history, gaps filled from later dates) and where each lives in the copied code.
-- [ ] Nothing on the Mac is changed. No training is run on real data, and nothing is computed on dates on or after 2025-01-01.
+- [x] The model builds and does one forward and backward pass on dummy data on this machine's graphics card (GTX 1650, 4 GB), or on the CPU if the card is unavailable.
+- [x] A one-page note says yes or no on the smoothing leak, with the synthetic test that shows it.
+- [x] The note also lists the paper's two smaller leaks (stock traits from the whole history, gaps filled from later dates) and where each lives in the copied code.
+- [x] Nothing on the Mac is changed. No training is run on real data, and nothing is computed on dates on or after 2025-01-01.
+
+## Implementation evidence
+
+- Ported the V3 five encoders, attention fusion, target builder, sample builder,
+  date splits, scaler, and source model dependency into models/stockxpert_port.
+  Exact upstream hashes and the import-path adapter are in provenance.md.
+- For h=1, the centered target reads raw_dlog[t-1], which uses Close[t] and
+  Close[t-1]; sample windows end at t. The synthetic test changes only
+  Close[t-1] and observes a changed centered target while Close[t] and later
+  closes remain fixed.
+- Whole-history traits are calculated in exported Mac scripts/train_v3.py
+  lines 209-246. Copied V3 sample code collapses those columns across each
+  full symbol frame at source/stockxpert/v3/dataset/make_samples.py lines
+  24-35 and 44-51. Later-value fills are at Mac script lines 139, 170, and 191.
+- Focused runtime check used CPU PyTorch 2.11.0+cpu in private
+  /tmp/kairos-ai-08-runtime, with audited existing dependencies read only.
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 and empty PYTEST_ADDOPTS were set. Only
+  tests/test_stockxpert_port.py ran. Result: 2 passed.
+- Exported Mac source was read only. The dirty training script was used only
+  to verify the listed lines. No data, checkpoints, training, market scores,
+  held-out dates, broker calls, or Mac writes were involved.
