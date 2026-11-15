@@ -13,6 +13,7 @@
 
 ## Implementation evidence
 
+- Coordinator reran the exact focused selection after auditing 14 local transitive Python files and minimal initializers. Isolated `/usr/bin/python3 -I -S -B` startup used only the checkout, private CPU torch package directory and existing root dependencies read-only, disabled plugin autoload and caches, cleared `PYTEST_ADDOPTS` and bypassed pytest project config with `/dev/null`. A Python audit hook refused network/subprocess and real artifact access. Result: **2 passed in 1.98s**; diff check passed; disk has about 9.0 GB free. The leak test currently reconstructs the copied target expression rather than invoking the full feature builder; independent review must assess whether that evidence is sufficient. No full feature/scaler pipeline or actual model quality is verified.
 - Ported the V3 five encoders, attention fusion, target builder, sample builder,
   date splits, scaler, and source model dependency into models/stockxpert_port.
   Exact upstream hashes and the import-path adapter are in provenance.md.

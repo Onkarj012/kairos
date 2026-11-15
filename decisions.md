@@ -12,6 +12,12 @@ Entry format:
 
 ---
 
+## 2026-11-15 — Ticket 08 preserves exported V3 source with isolated imports and minimal package initializers
+- rejected: reconstructing the architecture from a paper summary, executing unseen Mac package startup code, or importing the real training script
+- why: exact hash-verified source is available, including the original model's ResidualBlock and RegimeDetector dependency. Preserve computational classes, normalize whitespace, redirect three absolute imports into `models.stockxpert_port`, and use docstring-only package initializers. Source and local-adaptation hashes plus the dirty training-script caveat are recorded in provenance.md. Only synthetic CPU forward/backward and target arithmetic are exercised. The full feature builder still needs unexported indicator/event-calendar modules; the scaler needs scikit-learn and is not runtime-tested. These limitations must not be reported as a verified training pipeline or model performance.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; ticket 08 implementation `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket08-20261115-01`
+- status: active
+
 ## 2026-11-15 — Live daily inputs exclude the morning request's session and require flat scalars; verified reads consume private snapshots
 - rejected: inclusive same-day daily closes, nested feature containers carrying hidden answers, or verifying one file version and yielding another
 - why: independent ticket 04 review reproduced all three leaks, a publication collision failure and missing first-audit directory durability. Use completed sessions strictly before the request date and a flat scalar schema; consume the same verified bytes with an 8 MiB memory spool threshold and explicit temporary-disk capacity needs. Identical publication collisions verify the winner; owner authorization requires a pre-provisioned durable audit directory and file-plus-directory sync. These fixes do not establish OS isolation, real migration evidence or actual crash recovery.
