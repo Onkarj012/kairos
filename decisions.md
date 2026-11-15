@@ -12,6 +12,18 @@ Entry format:
 
 ---
 
+## 2026-11-15 — Ticket 04 separates pack/reader infrastructure from real migration and enforced owner-service protection
+- rejected: declaring ticket 04 complete from synthetic tests, using a Python password/private name as vault security, or treating uncompressed JSONL as proven compact minute storage
+- why: the initial implementation uses standard-library JSONL packs with checksummed manifests and per-session live packs, avoiding new dependencies while checking date refusal and bounded input projection. These are provisional infrastructure choices, not accepted 439-million-row storage or migration evidence. A dedicated owner-service OS identity and authenticated IPC remain necessary; no such service is deployed. Real partition counts/checksums and enforced filesystem separation must be accepted before 05/17 unlock. Ticket 17 must demonstrate compact source-preserving packing within storage limits, not blindly expand minute data into JSONL.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; ticket 04 worker `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket04-20261115-01`
+- status: active
+
+## 2026-11-15 — Ticket 08 uses an isolated CPU-only check environment and complete hash-verified Mac source, not a summary reconstruction
+- rejected: reconstructing the published model from a helper summary, treating missing dependencies as a completed model check, installing a GPU stack or modifying shared project environments
+- why: the first source helper returned a partial summary and the worker's interpreter lacked PyTorch. Resume the same worker using complete existing-helper source output or a follow-up to that helper. Permit a private temporary CPU-only runtime after resolution and size checks, capped at 2 GB new disk use while leaving at least 8 GB free. No real-data training or Mac writes are authorized; source fidelity and successful dummy forward/backward evidence are still required.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; ticket 08 worker `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket08-20261115-01`
+- status: active
+
 ## 2026-11-15 — Daily bars with unknown target/stop order use masked training answers and conservative stop-first replay
 - rejected: guessing intraday order from the close or candle direction, training on guessed answers, or reporting target-first gains without event-order evidence
 - why: Greptile's setup PR review identified that a daily bar opening between target and stop can touch both without showing which came first. Tickets 05 and 12 share one ambiguity classification. Keep other valid training answers, count and mask the ambiguous target-before-stop answer, and settle an ambiguous open position stop-first in replay. Observed opening gaps through a stop use the opening price with costs/slippage. Entry-fill eligibility remains independent. Later minute data may resolve order only within the existing date and information restrictions.
