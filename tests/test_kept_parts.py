@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import asyncio
+import pytest
 from datetime import datetime
 from urllib.parse import parse_qs, urlsplit
 from zoneinfo import ZoneInfo
@@ -9,7 +11,7 @@ from zoneinfo import ZoneInfo
 from ops.account_core import AccountEvent, kill_switch_path
 from ops.daily_account import AccountSpec, DailyAccount
 from ops.event_log import EventLogWriter, read_events, verify_chain
-from ops.paper_calendar import Calendar
+from ops.paper_calendar import Calendar, CalendarMissing, answer_cutoff, load_calendar
 from serve.api import create_app
 from serve.dashboard import load_account, render_account
 
@@ -91,7 +93,7 @@ def test_account_approval_events_remain_readable(tmp_path):
     assert read_events(account.path)[-1].payload["via"] == "dashboard"
 
 
-def test_dashboard_approval_works_without_the_daily_runner(tmp_path):
+def _pending_approval(tmp_path):
     spec = AccountSpec("paper-reversal_5d-50k", "reversal_5d", 50_000)
     account = DailyAccount(tmp_path / "accounts", spec)
     account.open(session="2024-01-08", verdict="synthetic")
@@ -105,7 +107,10 @@ def test_dashboard_approval_works_without_the_daily_runner(tmp_path):
     calendar = Calendar(frozen={}, holidays={2024: {}})
     now = lambda: datetime.fromisoformat("2024-01-09T08:30:00+05:30")
     app = create_app(accounts_root=tmp_path / "accounts", runner_root=tmp_path / "runner", calendar=calendar, clock=now)
+    return app, account
 
+
+def _answer_notice(app, decision):
     async def request():
         scope = {
             "type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"}, "http_version": "1.1",
@@ -114,7 +119,7 @@ def test_dashboard_approval_works_without_the_daily_runner(tmp_path):
             "headers": [(b"host", b"localhost"), (b"origin", b"http://127.0.0.1:8765")],
             "client": ("testclient", 50000), "server": ("testserver", 80),
         }
-        messages = [{"type": "http.request", "body": b"decision=approved", "more_body": False}]
+        messages = [{"type": "http.request", "body": f"decision={decision}".encode(), "more_body": False}]
         sent = []
 
         async def receive():
@@ -129,5 +134,56 @@ def test_dashboard_approval_works_without_the_daily_runner(tmp_path):
     status, headers = asyncio.run(request())
     notice = parse_qs(urlsplit(headers["location"]).query)["notice"][0]
     assert status == 303
+    return notice
+
+
+def test_dashboard_approval_works_without_the_daily_runner(tmp_path):
+    app, account = _pending_approval(tmp_path)
+    notice = _answer_notice(app, "approved")
     assert "Approved ABC" in notice
     assert account.view().decisions["2024-01-08:ABC"] == "approved"
+
+
+def test_dashboard_opposite_answer_is_a_no_write_retry(tmp_path):
+    app, account = _pending_approval(tmp_path)
+    _answer_notice(app, "approved")
+    original = account.path.read_bytes()
+    assert _answer_notice(app, "rejected") == "Already approved: ABC"
+    assert account.path.read_bytes() == original
+    assert account.view().decisions["2024-01-08:ABC"] == "approved"
+
+
+def test_dashboard_cross_channel_answer_is_a_no_write_retry(tmp_path):
+    app, account = _pending_approval(tmp_path)
+    account.append([AccountEvent("INTENT_APPROVED", "2024-01-09", {
+        "intent_id": "2024-01-08:ABC", "security_id": "ABC", "via": "telegram", "update_id": 7,
+    })])
+    original = account.path.read_bytes()
+    assert _answer_notice(app, "approved") == "Already approved: ABC"
+    assert account.path.read_bytes() == original
+
+
+def test_normalized_calendar_needs_no_old_proof_module_or_artifact(tmp_path):
+    calendar_root = tmp_path / "calendar"
+    calendar_root.mkdir()
+    rows = [
+        {"session_date": "2024-01-08", "session_type": "regular"},
+        {"session_date": "2024-01-09", "session_type": "holiday"},
+        {"session_date": "2024-01-10", "session_type": "special"},
+    ]
+    payload = b"".join((json.dumps(row) + "\n").encode() for row in rows)
+    (calendar_root / "sessions.jsonl").write_bytes(payload)
+    (calendar_root / "manifest.json").write_text(json.dumps({
+        "schema": "meridian.nse-calendar.public-v3", "session_count": len(rows),
+        "session_sha256": hashlib.sha256(payload).hexdigest(),
+    }))
+    calendar = load_calendar(tmp_path)
+    signal = datetime.fromisoformat("2024-01-08").date()
+    assert answer_cutoff(calendar, signal).isoformat() == "2024-01-10T08:40:00+05:30"
+    with pytest.raises(CalendarMissing):
+        calendar.state(datetime.fromisoformat("2024-01-11").date())
+    (calendar_root / "sessions.jsonl").write_bytes(payload + b"\n")
+    with pytest.raises(CalendarMissing, match="checksum"):
+        load_calendar(tmp_path)
+    with pytest.raises(CalendarMissing):
+        load_calendar(tmp_path / "absent")

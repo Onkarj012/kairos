@@ -2,14 +2,11 @@
 from __future__ import annotations
 
 import json
-import shutil
+import hashlib
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
-
-from evidence.daily_session_ledger import load_calendar_evidence
-from ingest.calendar import parse_holiday_rows
 
 IST = ZoneInfo("Asia/Kolkata")
 ANSWER_CUTOFF = time(8, 40)
@@ -50,25 +47,33 @@ class Calendar:
 
 
 def load_calendar(root: str | Path) -> Calendar:
-    root = Path(root)
-    runner = root / "daily-runner"
-    ledger = runner / "session-ledger-v1/sessions.jsonl"
-    frozen = {
-        date.fromisoformat(row["session_date"]): str(row["state"])
-        for row in map(json.loads, ledger.read_text(encoding="utf-8").splitlines())
-    }
-    if shutil.which("pdftotext") is None:
-        raise CalendarMissing("pdftotext is not on PATH, so the retained NSE holiday PDFs cannot be read")
-    holidays: dict[int, dict[date, str]] = {}
-    annuals, _notices, _sources = load_calendar_evidence(root / "daily-graph/calendar-evidence-v1")
-    for annual in annuals:
-        rows = parse_holiday_rows(annual.text, year=annual.year)
-        if rows:
-            holidays[annual.year] = {
-                date.fromisoformat(row["session_date"]): str(row.get("session_type", "holiday"))
-                for row in rows
-            }
-    return Calendar(frozen, holidays)
+    """Load retained normalized sessions, independent of the old proof chain.
+
+    ``root/calendar`` uses the existing ``ingest.calendar.normalized_payload``
+    sessions/manifest format. Only explicitly represented dates are usable;
+    missing files, dates or invalid checksums close approvals, not account pages.
+    """
+    calendar_root = Path(root) / "calendar"
+    try:
+        manifest = json.loads((calendar_root / "manifest.json").read_text(encoding="utf-8"))
+        payload = (calendar_root / "sessions.jsonl").read_bytes()
+        rows = [json.loads(line) for line in payload.splitlines() if line.strip()]
+        if manifest["schema"] != "meridian.nse-calendar.public-v3":
+            raise ValueError("unsupported normalized calendar schema")
+        if manifest["session_sha256"] != hashlib.sha256(payload).hexdigest() or manifest["session_count"] != len(rows):
+            raise ValueError("normalized calendar checksum or count mismatch")
+        states = {"holiday": "non_session", **dict.fromkeys(
+            ("regular", "muhurat", "special", "shortened", "contingency"), "expected"
+        )}
+        frozen: dict[date, str] = {}
+        for row in rows:
+            day = date.fromisoformat(row["session_date"])
+            if day in frozen:
+                raise ValueError("duplicate calendar session")
+            frozen[day] = states[row["session_type"]]
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError) as exc:
+        raise CalendarMissing(f"retained normalized calendar is unavailable: {exc}") from exc
+    return Calendar(frozen=frozen, holidays={})
 
 
 def answer_cutoff(calendar: Calendar, signal_session: date) -> datetime:

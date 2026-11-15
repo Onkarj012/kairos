@@ -112,6 +112,8 @@ def create_app(recommendations=None, *args, root=None, recommendations_path=None
         intent = next((i for i in page.view.state.intents if i.intent_id == intent_id and not i.sent), None)
         if intent is None:
             return f"Too late for {intent_id}; nothing changed"
+        if intent_id in page.view.decisions:
+            return f"Already {page.view.decisions[intent_id]}: {intent.security_id}"
         if not ready(page):
             return f"{account_id} is halted, kill-switched or unknown; nothing changed"
         signal = date.fromisoformat(intent.signal_session)
