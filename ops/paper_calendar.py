@@ -50,8 +50,9 @@ def load_calendar(root: str | Path) -> Calendar:
     """Load retained normalized sessions, independent of the old proof chain.
 
     ``root/calendar`` uses the existing ``ingest.calendar.normalized_payload``
-    sessions/manifest format. Only explicitly represented dates are usable;
-    missing files, dates or invalid checksums close approvals, not account pages.
+    sessions/manifest format. Omitted weekends within the represented range
+    are non-sessions; explicit special-session rows take precedence. Missing
+    weekdays, out-of-range dates or invalid files close approvals, not pages.
     """
     calendar_root = Path(root) / "calendar"
     try:
@@ -71,6 +72,15 @@ def load_calendar(root: str | Path) -> Calendar:
             if day in frozen:
                 raise ValueError("duplicate calendar session")
             frozen[day] = states[row["session_type"]]
+        if frozen:
+            current = min(frozen)
+            last = max(frozen)
+            while current <= last:
+                if current.weekday() >= 5:
+                    frozen.setdefault(current, "non_session")
+                if current == last:
+                    break
+                current += timedelta(days=1)
     except (OSError, UnicodeError, ValueError, KeyError, TypeError) as exc:
         raise CalendarMissing(f"retained normalized calendar is unavailable: {exc}") from exc
     return Calendar(frozen=frozen, holidays={})

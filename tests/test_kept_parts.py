@@ -187,3 +187,30 @@ def test_normalized_calendar_needs_no_old_proof_module_or_artifact(tmp_path):
         load_calendar(tmp_path)
     with pytest.raises(CalendarMissing):
         load_calendar(tmp_path / "absent")
+
+
+def test_normalized_calendar_skips_covered_weekends_but_not_missing_weekdays(tmp_path):
+    calendar_root = tmp_path / "calendar"
+    calendar_root.mkdir()
+    rows = [
+        {"session_date": "2024-01-05", "session_type": "regular"},
+        {"session_date": "2024-01-08", "session_type": "regular"},
+        {"session_date": "2024-01-12", "session_type": "regular"},
+        {"session_date": "2024-01-13", "session_type": "special"},
+        {"session_date": "2024-01-15", "session_type": "regular"},
+    ]
+    payload = b"".join((json.dumps(row) + "\n").encode() for row in rows)
+    (calendar_root / "sessions.jsonl").write_bytes(payload)
+    (calendar_root / "manifest.json").write_text(json.dumps({
+        "schema": "meridian.nse-calendar.public-v3", "session_count": len(rows),
+        "session_sha256": hashlib.sha256(payload).hexdigest(),
+    }))
+    calendar = load_calendar(tmp_path)
+    friday = datetime.fromisoformat("2024-01-05").date()
+    assert answer_cutoff(calendar, friday).isoformat() == "2024-01-08T08:40:00+05:30"
+    next_friday = datetime.fromisoformat("2024-01-12").date()
+    assert answer_cutoff(calendar, next_friday).isoformat() == "2024-01-13T08:40:00+05:30"
+    with pytest.raises(CalendarMissing):
+        answer_cutoff(calendar, datetime.fromisoformat("2024-01-08").date())
+    with pytest.raises(CalendarMissing):
+        calendar.state(datetime.fromisoformat("2024-01-21").date())
