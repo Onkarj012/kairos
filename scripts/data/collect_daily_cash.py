@@ -11,7 +11,7 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from evidence.daily_acquisition_checkpoint import CheckpointError, aggregate_seed_counts
+from ingest.acquisition_budget import CheckpointError, aggregate_seed_counts
 from ingest.daily_cash import (
     CASH_URL_ROUTES,
     DEFAULT_ROUTE,
