@@ -230,7 +230,7 @@ def render_accounts(specs: list[AccountSpec], pages: dict[str, AccountPage]) -> 
             _e(state.last_session or "none"),
         ])
     body = (
-        f'{_nav()}<h1>Paper accounts</h1><p class="muted">Clear halts with <code>scripts/run_daily.py clear --note</code>.</p>'
+        f'{_nav()}<h1>Paper accounts</h1><p class="muted">Halts and recovery notes are recorded in each account event log.</p>'
         f"<section>{_table(headers, rows, 'No accounts.')}</section>"
     )
     return _page("Paper accounts", body)
