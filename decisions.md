@@ -12,6 +12,24 @@ Entry format:
 
 ---
 
+## 2026-11-15 — Kept normalized calendars infer only omitted weekends inside their represented date range
+- rejected: rejecting every omitted weekend, inferring missing weekday sessions, or filling dates outside retained coverage
+- why: PR 11 Greptile review showed the existing normalized producer omits ordinary weekends, so explicit-date-only lookup incorrectly closed Friday approvals before reaching Monday. Keep the normalized sessions/manifest format and independence from retired proof modules, fill omitted in-range weekends as non-sessions, preserve explicit special weekend rows, and refuse missing weekdays or out-of-range dates. Calendar provisioning remains separate and unverified.
+- source: PR 11 review https://github.com/Onkarj012/kairos/pull/11#discussion_r4578749239; coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`
+- status: active
+
+## 2026-11-15 — Kept paper-calendar loading uses normalized session records, not the retired proof chain
+- rejected: importing old calendar-proof modules into kept dashboard code, requiring frozen runner-ledger artifacts, or guessing weekday sessions when calendar evidence is missing
+- why: independent ticket 01 review found those imports would break on ticket 03's authorized deletions. Read the existing `meridian.nse-calendar.public-v3` sessions/manifest format under `<derived-root>/calendar`, verify its count and hash, and use only explicitly listed session dates. Missing or invalid records close approvals without preventing read-only history. Existing retained artifacts are not converted here; approval timing needs this normalized artifact provisioned and validated separately. Restore existing-answer no-write retries before dashboard appends so cross-channel and opposite-answer retries preserve account/log behavior.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; review `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket01-review-20261115-r1`
+- status: superseded by 2026-11-15 — Kept normalized calendars infer only omitted weekends inside their represented date range
+
+## 2026-11-15 — Ticket 01 extracts neutral account/log/calendar modules and retains legacy compatibility callers
+- rejected: deleting legacy files in ticket 01, changing paper-log formats or forcing the dashboard through the old runner
+- why: preserve existing account folding and hash-chain history while making kept account/dashboard/API code independent of old strategy, sealed-test and runner imports. Legacy modules remain compatibility callers until tickets 02/03 remove them under their own scopes. Coordinator validation may read the existing absolute root virtual environment's installed dependencies without modifying that environment or the owner checkout.
+- source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; ticket 01 worker `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket01-20261115-01`
+- status: active
+
 ## 2026-11-15 — Live daily inputs exclude the morning request's session and require flat scalars; verified reads consume private snapshots
 - rejected: inclusive same-day daily closes, nested feature containers carrying hidden answers, or verifying one file version and yielding another
 - why: independent ticket 04 review reproduced all three leaks, a publication collision failure and missing first-audit directory durability. Use completed sessions strictly before the request date and a flat scalar schema; consume the same verified bytes with an 8 MiB memory spool threshold and explicit temporary-disk capacity needs. Identical publication collisions verify the winner; owner authorization requires a pre-provisioned durable audit directory and file-plus-directory sync. These fixes do not establish OS isolation, real migration evidence or actual crash recovery.

@@ -13,9 +13,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from evidence.research_ledger import ResearchEvent, ResearchLedgerWriter, read_events
-from evidence.sealed_test import HOLDOUT_END, HOLDOUT_START
-from ops.daily_rules import (
+from ops.event_log import Event, EventLogWriter, read_events
+from ops.account_core import (
     ENGINE_EVENTS,
     AccountEvent,
     AccountState,
@@ -24,6 +23,9 @@ from ops.daily_rules import (
     new_state,
     trades_frame,
 )
+
+HOLDOUT_START = date(2025, 10, 1)
+HOLDOUT_END = date(2026, 9, 30)
 
 ACCOUNTS_DIR = "daily-runner/accounts"
 SETTLE_EVENTS = frozenset({
@@ -93,7 +95,7 @@ def _job_id(event: AccountEvent) -> str:
     return f"account:{event.session}"
 
 
-def _to_engine(event: ResearchEvent) -> AccountEvent:
+def _to_engine(event: Event) -> AccountEvent:
     """Rebuild an engine event from its stored ledger form."""
     payload = dict(event.payload)
     session = str(payload.pop("session"))
@@ -106,7 +108,7 @@ class DailyAccount:
     def __init__(self, root: Path, spec: AccountSpec) -> None:
         self.spec = spec
         self.path = Path(root) / spec.account_id / "events.jsonl"
-        self.writer = ResearchLedgerWriter(self.path)
+        self.writer = EventLogWriter(self.path)
 
     def exists(self) -> bool:
         """Return whether the account has been opened."""
@@ -122,7 +124,7 @@ class DailyAccount:
             "stage1_verdict": verdict,
         }))
 
-    def view(self, events: list[ResearchEvent] | None = None) -> AccountView:
+    def view(self, events: list[Event] | tuple[Event, ...] | None = None) -> AccountView:
         """Fold the log, or an already-read copy of it, into account state, leaving out events of incomplete steps."""
         events = read_events(self.path) if events is None else events
         if not events or events[0].event_type != "ACCOUNT_OPENED":
