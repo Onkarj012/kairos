@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Kairos morning publish and login reminder job
+
+[Timer]
+OnCalendar=*-*-* 08:15:00 Asia/Kolkata
+RandomizedDelaySec=2m
+Unit=kairos-morning-publish-reminder.service
+
+[Install]
+WantedBy=timers.target

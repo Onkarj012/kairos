@@ -1,0 +1,12 @@
+[Unit]
+Description=Kairos morning publish and login reminder job
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 __KAIROS_REPO_ROOT__/scripts/kairos_jobs.py morning-publish-reminder
+WorkingDirectory=__KAIROS_REPO_ROOT__
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=KAIROS_JOB_LOCK=%t/kairos-jobs.lock
+UMask=0077
+TimeoutStartSec=20min
+NoNewPrivileges=yes

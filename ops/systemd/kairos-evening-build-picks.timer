@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Kairos evening data and picks job
+
+[Timer]
+OnCalendar=*-*-* 18:45:00 Asia/Kolkata
+RandomizedDelaySec=5m
+Unit=kairos-evening-build-picks.service
+
+[Install]
+WantedBy=timers.target

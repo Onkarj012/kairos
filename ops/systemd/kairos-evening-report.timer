@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Kairos evening report job
+
+[Timer]
+OnCalendar=*-*-* 20:30:00 Asia/Kolkata
+RandomizedDelaySec=5m
+Unit=kairos-evening-report.service
+
+[Install]
+WantedBy=timers.target
