@@ -151,9 +151,10 @@ def main(argv: list[str] | None = None) -> int:
         return 64
     # Real handlers and transports are intentionally unavailable until later
     # tickets provide explicit, audited adapters.
-    base = Path(os.environ.get("KAIROS_JOB_STATE", Path.home() / ".local/state/kairos/jobs"))
-    lock_root = Path(os.environ.get("XDG_RUNTIME_DIR", str(base)))
-    lock = Path(os.environ.get("KAIROS_JOB_LOCK", lock_root / "kairos-jobs.lock"))
+    private_state = Path.home() / ".local/state/kairos/jobs"
+    base = Path(os.environ.get("KAIROS_JOB_STATE", private_state))
+    lock = Path(os.environ.get("KAIROS_JOB_LOCK", private_state / "kairos-jobs.lock"))
+    lock.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     return run_job(args[0], runtime_dir=base, lock_path=lock)
 
 

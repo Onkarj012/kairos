@@ -6,6 +6,10 @@ before taking the owner action to reload systemd and enable timers. Install
 does not enable or start anything. Uninstall disables and stops all three timers,
 then stops their services before removing any unit files. A manager error aborts
 removal and is reported to the caller; it is not treated as successful cleanup.
+Install rejects checkout paths outside ASCII letters, digits, `/`, `_`, `.`, and
+`-` before creating the unit directory. This avoids ambiguous systemd arguments,
+specifier expansion and shell replacement syntax; unsupported paths must be
+relocated rather than silently producing broken units.
 
 ## Schedule and deadlines
 
@@ -19,16 +23,19 @@ days until an owner provisions a calendar-aware monitor.
 
 ## Runtime contract
 
-Every process takes the same nonblocking lock (`%t/kairos-jobs.lock`), so these
+Every CLI or service takes the same default nonblocking lock
+(`~/.local/state/kairos/jobs/kairos-jobs.lock`), so these
 jobs serialize with each other. A duplicate exits 75 and logs
 `overlap-skipped`. Linux releases the advisory lock on normal exit, exception,
 or process death. Logs are under `~/.local/state/kairos/jobs/jobs.jsonl` and
 contain job names, event times and safe reason labels only. Token values,
 paths, and exception messages are never logged.
 
-Standalone CLI use defaults to the same `XDG_RUNTIME_DIR` lock directory when
-available, otherwise the private job state directory; it does not require a
-writable system `/run/lock`. The service entry point establishes the repository
+The default is independent of `XDG_RUNTIME_DIR` and `KAIROS_JOB_STATE`, so an
+interactive shell, service or redirected log directory cannot select a different
+lock accidentally. An explicit `KAIROS_JOB_LOCK` override must be identical for
+every cooperating entry point. It does not require a writable system `/run/lock`.
+The service entry point establishes the repository
 import path without relying on ambient `PYTHONPATH`.
 
 Successful completion atomically replaces one per-job JSON file in

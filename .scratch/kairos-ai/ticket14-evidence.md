@@ -18,6 +18,15 @@ Status: implementation only; ticket 14 remains incomplete.
 
 ## Validation performed
 
+- PR 14 Greptile review at c10cefc found two further P2s. The standalone fallback
+  and service lock differed when `XDG_RUNTIME_DIR` was absent; both now use one
+  stable home-state default independent of runtime/log-state overrides. Services
+  no longer override it. Synthetic runs with and without XDG contend on the same
+  held lock. Installer now rejects unsupported checkout characters before any
+  unit-directory write. Space, ampersand and percent fixtures fail closed under
+  temporary paths; no real installation or manager action occurs. The new
+  regressions failed before fixes. Fresh exact-head independent review and
+  current-head bot acceptance remain required before merge.
 - Round-one review found three P2 regressions. Coordinator reproduced both
   runtime failures with new tests before fixing them, and a fake-manager shell
   regression failed because uninstall never stopped services. Completion logging

@@ -1,5 +1,13 @@
 # Kairos AI execution ledger
 
+PR 14 bot-fix checkpoint, 2026-11-15 IST: c10cefc received Sol high approval and
+opened https://github.com/Onkarj012/kairos/pull/14. Greptile 4/5 identified differing
+lock defaults and unsafe installer paths. Coordinator reproduced/fixed both;
+eight guarded tests plus fake-manager/path-refusal shell checks pass. Changes
+await fresh exact-head review before push. No merge, activation or delivery
+evidence is claimed; 14 incomplete and 15 blocked. Ticket 03 coverage fixes are
+committed c91e4d3, awaiting independent round-two review.
+
 Ticket 14 review-fix checkpoint, 2026-11-15 IST: round one blocked three P2s;
 coordinator reproduced and fixed log-before-heartbeat ordering, non-object JSON
 refusal and fail-closed uninstall of timers plus active services. Eight isolated

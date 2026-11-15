@@ -45,3 +45,24 @@ for scenario in success timer-failure service-failure; do
     fi
 done
 printf 'PASS: fake-manager success, timer failure, service failure\n'
+for name in 'checkout space' 'checkout&replacement' 'checkout%specifier'; do
+    checkout="$sandbox/$name"
+    mkdir -p "$checkout/ops/systemd"
+    cp "$repo_root/ops/systemd/install.sh" "$checkout/ops/systemd/install.sh"
+    export XDG_CONFIG_HOME="$checkout/config"
+    if bash "$checkout/ops/systemd/install.sh" > "$checkout/output" 2>&1; then
+        printf 'FAIL: unsupported checkout accepted: %s\n' "$name" >&2
+        exit 1
+    else
+        [[ "$?" == 64 ]]
+        [[ ! -e "$XDG_CONFIG_HOME/systemd/user" ]]
+        grep -q 'unsupported checkout path' "$checkout/output"
+    fi
+done
+for service in "$repo_root"/ops/systemd/*.service; do
+    if grep -q '^Environment=KAIROS_JOB_LOCK=' "$service"; then
+        printf 'FAIL: service overrides the shared CLI lock default\n' >&2
+        exit 1
+    fi
+done
+printf 'PASS: unsafe installer paths rejected before writes; services share CLI lock default\n'

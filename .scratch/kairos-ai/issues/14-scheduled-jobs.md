@@ -18,6 +18,12 @@ A lock stops two copies of a job running at once. An alert from outside the mach
 
 ## Infrastructure evidence only
 
+PR 14 bot review found environment-dependent lock paths and unsafe checkout-path
+substitution. Local fixes use the same home-state default for services and CLI,
+and reject unsupported installer checkout paths before writes. Synthetic lock
+contention and path-refusal checks pass. These changes await independent review,
+push and current-head bot acceptance; the ticket remains operationally incomplete.
+
 Round-one independent review blocked on completion-log/heartbeat ordering,
 non-object heartbeat handling and uninstall leaving active services. All three
 have local regression fixes; eight focused Python tests and three fake-manager

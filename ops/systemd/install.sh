@@ -2,6 +2,10 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+if [[ ! "$repo_root" =~ ^/[A-Za-z0-9_./-]+$ ]]; then
+    printf 'unsupported checkout path: use only ASCII letters, digits, /, _, ., and -\n' >&2
+    exit 64
+fi
 unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 mkdir -p "$unit_dir"
 for unit in "$repo_root"/ops/systemd/kairos-*.service "$repo_root"/ops/systemd/kairos-*.timer; do

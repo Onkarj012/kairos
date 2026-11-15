@@ -74,11 +74,26 @@ def test_unconfigured_and_failed_jobs_do_not_refresh_heartbeat(tmp_path: Path) -
 
 def test_unconfigured_cli_uses_private_state_without_system_lock(tmp_path, monkeypatch):
     runtime = tmp_path / "jobs"
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("KAIROS_JOB_STATE", str(runtime))
     monkeypatch.delenv("KAIROS_JOB_LOCK", raising=False)
     monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
     assert main(["evening-report"]) == 2
-    assert (runtime / "kairos-jobs.lock").exists()
+    lock = tmp_path / "home/.local/state/kairos/jobs/kairos-jobs.lock"
+    assert lock.exists()
+    assert not (runtime / "kairos-jobs.lock").exists()
+    runtime_lock_inode = lock.stat().st_ino
+    user_runtime = tmp_path / "user-runtime"
+    user_runtime.mkdir()
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(user_runtime))
+    assert main(["evening-report"]) == 2
+    assert lock.stat().st_ino == runtime_lock_inode
+    assert not (user_runtime / "kairos-jobs.lock").exists()
+    with lock.open("a") as held:
+        fcntl.flock(held.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert main(["evening-report"]) == 75
+        monkeypatch.delenv("XDG_RUNTIME_DIR")
+        assert main(["evening-report"]) == 75
     assert "job backend is not configured" in (runtime / "jobs.jsonl").read_text()
     assert not (runtime / "heartbeats/evening-report.json").exists()
 
