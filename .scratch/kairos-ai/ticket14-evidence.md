@@ -18,6 +18,16 @@ Status: implementation only; ticket 14 remains incomplete.
 
 ## Validation performed
 
+- Round-one review found three P2 regressions. Coordinator reproduced both
+  runtime failures with new tests before fixing them, and a fake-manager shell
+  regression failed because uninstall never stopped services. Completion logging
+  now precedes terminal heartbeat publication; non-mapping JSON fails freshness;
+  uninstall disables all timers, stops their services, and aborts on any manager
+  error before deleting definitions. The isolated Python selection now reports
+  **8 passed in 0.07s**, zero safety refusals. The shell regression passes success,
+  timer-error, and service-error cases using only a private fake `systemctl`.
+  Shell syntax and `git diff --check` pass. No host service action occurred.
+  Independent round-two review is required before PR.
 - Coordinator inspected the full three-file import closure and the entry point,
   then reran the isolated selection using private TMPDIR: **6 passed in 0.06s**,
   zero safety refusals. Fixed repository imports for the service entry point

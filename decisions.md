@@ -18,6 +18,13 @@ Entry format:
 - source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; ticket 14 implementation `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket14-20261115-01`
 - status: active
 
+Review clarification, 2026-11-15 IST: heartbeat publication follows completion
+logging as the terminal success operation; non-object heartbeat JSON is invalid.
+Uninstall stops every timer before stopping services and removes files only if
+all manager commands succeed. Rejected swallowing manager errors or refreshing
+success before a fallible log write because either hides failure. Source: ticket
+14 independent round-one review in this coordinator thread. Status: active.
+
 ## 2026-11-15 — Ticket 02 retains login in a minimal helper rather than retaining broker code for token utilities
 - rejected: keeping the old Kite broker and its order API solely to supply login constants and token persistence
 - why: preserve the standing one-tap login path, token JSON/private permissions and IST behavior without retaining the dropped runner or order machinery. Login checks use injected settings and temporary tokens only, not a real callback, account or network call.

@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from ops import scheduled_jobs
 from ops.scheduled_jobs import TokenRecord, heartbeat_is_fresh, main, parse_token_record, run_job, valid_token
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -89,6 +90,31 @@ def test_second_job_exits_immediately_when_shared_lock_is_held(tmp_path: Path) -
         fcntl.flock(first.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         assert run_job("evening-report", runtime_dir=runtime, lock_path=lock_path, handler=FakeHandler()) == 75
     assert "overlap-skipped" in (runtime / "jobs.jsonl").read_text()
+
+
+def test_completion_log_failure_preserves_previous_heartbeat(tmp_path, monkeypatch):
+    runtime, lock = _paths(tmp_path)
+    heartbeat = runtime / "heartbeats/evening-report.json"
+    heartbeat.parent.mkdir(parents=True)
+    heartbeat.write_bytes(b"synthetic previous heartbeat\n")
+    previous = heartbeat.read_bytes()
+    original_log = scheduled_jobs._log
+
+    def failing_completion_log(path, event, job, detail=""):
+        if event == "completed":
+            raise OSError("synthetic log failure")
+        original_log(path, event, job, detail)
+
+    monkeypatch.setattr(scheduled_jobs, "_log", failing_completion_log)
+    assert run_job("evening-report", runtime_dir=runtime, lock_path=lock, handler=FakeHandler()) == 1
+    assert heartbeat.read_bytes() == previous
+    assert json.loads((runtime / "jobs.jsonl").read_text().splitlines()[-1])["event"] == "failed"
+
+
+def test_monitor_rejects_non_mapping_json() -> None:
+    now = datetime(2024, 12, 31, 10, 0, tzinfo=IST)
+    for encoded in ("null", "[]", '"synthetic"', "42", "true"):
+        assert not heartbeat_is_fresh(json.loads(encoded), job="evening-report", now=now, deadline_seconds=10)
 
 
 def test_monitor_rejects_missing_wrong_job_future_and_late_heartbeats() -> None:

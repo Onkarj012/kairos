@@ -10,6 +10,7 @@ import fcntl
 import json
 import os
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -107,9 +108,9 @@ def run_job(
                     _log(log_path, "held", job, "job backend is not configured")
                     return 2
                 handler.run(job=job, token=None)
+            _log(log_path, "completed", job)
             writer = heartbeat_writer or _write_heartbeat
             writer(runtime_dir / "heartbeats" / f"{job}.json", job, started)
-            _log(log_path, "completed", job)
             return 0
         except Exception as exc:
             _log(log_path, "failed", job, type(exc).__name__)
@@ -127,8 +128,10 @@ def _write_heartbeat(path: Path, job: str, started: datetime) -> None:
     os.replace(temporary, path)
 
 
-def heartbeat_is_fresh(payload: dict[str, str], *, job: str, now: datetime, deadline_seconds: int) -> bool:
+def heartbeat_is_fresh(payload: object, *, job: str, now: datetime, deadline_seconds: int) -> bool:
     """Pure outside-monitor predicate; missing, malformed or late heartbeat fails."""
+    if not isinstance(payload, Mapping):
+        return False
     try:
         if payload.get("job") != job or payload.get("timezone") != "Asia/Kolkata":
             return False

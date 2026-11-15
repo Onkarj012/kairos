@@ -3,7 +3,9 @@
 These are user-level Linux systemd oneshot jobs. The install script copies unit
 files with the current checkout path substituted; review the resulting files
 before taking the owner action to reload systemd and enable timers. Install
-does not enable or start anything. Uninstall disables/removes the three timers.
+does not enable or start anything. Uninstall disables and stops all three timers,
+then stops their services before removing any unit files. A manager error aborts
+removal and is reported to the caller; it is not treated as successful cleanup.
 
 ## Schedule and deadlines
 
@@ -35,7 +37,10 @@ Successful completion atomically replaces one per-job JSON file in
 timezone and a completion before its deadline. Missing files, stale timestamps,
 failed/held status, and a job marked started without completion are missed
 deadlines. The heartbeat is written only after the injected job handler (and,
-for morning, injected reminder transport) completes. The monitor must run
+for morning, injected reminder transport) completes and its completion log is
+written. Heartbeat publication is the final success operation. The completion
+log alone does not prove heartbeat publication. Non-object JSON is an invalid
+heartbeat, not a monitor exception. The monitor must run
 outside this host and alert on missing deadlines; the code cannot provision or
 prove that monitor or its delivery path.
 

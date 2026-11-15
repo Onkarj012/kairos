@@ -18,4 +18,10 @@ A lock stops two copies of a job running at once. An alert from outside the mach
 
 ## Infrastructure evidence only
 
+Round-one independent review blocked on completion-log/heartbeat ordering,
+non-object heartbeat handling and uninstall leaving active services. All three
+have local regression fixes; eight focused Python tests and three fake-manager
+shell scenarios pass. Round-two independent approval is still pending. No host
+service actions ran and no operational acceptance is claimed.
+
 See `../ticket14-evidence.md` and `ops/systemd/README.md` for the offline implementation, validation and remaining operational evidence. Three unit pairs, install/uninstall scripts, a shared nonblocking lock and fail-closed adapters are implemented. Coordinator fixed the service script's repository import path and changed the standalone default lock away from system `/run/lock` to the user runtime/private state directory. Six focused synthetic tests pass; an isolated CLI invocation from an unrelated temporary directory exits held (2), with no success heartbeat. No unit was installed or enabled. External monitor delivery, actual reminder delivery and real data/model/picks/report handler wiring remain absent, so ticket 14 is incomplete and 15 remains blocked.

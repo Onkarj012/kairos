@@ -1,5 +1,13 @@
 # Kairos AI execution ledger
 
+Ticket 14 review-fix checkpoint, 2026-11-15 IST: round one blocked three P2s;
+coordinator reproduced and fixed log-before-heartbeat ordering, non-object JSON
+refusal and fail-closed uninstall of timers plus active services. Eight isolated
+synthetic Python tests and three fake-manager shell scenarios pass. No host
+systemd action occurred. Fresh exact-head round-two review is pending. Ticket 14
+remains incomplete and 15 blocked. Ticket 03 separately received three retained
+coverage findings; no PR has opened for either branch.
+
 Scheduler checkpoint, 2026-11-15 IST: ticket 02 PR https://github.com/Onkarj012/kairos/pull/13 merged as `6223a371124b30422909b7ad75631f4b3670b369` and unwatched after exact-head Sol high approval, 19 synthetic checks, Greptile 5/5/SUCCESS, CodeRabbit SKIPPED and no review threads. Cleanup evidence accepted. Tickets 03 and 14 dispatched from that base with disjoint scopes. Ticket 14 worker committed faef77e; coordinator fixed entry-point imports and standalone lock location, reproduced 6 focused synthetic checks with no safety refusals plus an isolated temporary-state held CLI invocation. No timers installed/enabled or handlers deployed. Current-head independent review remains required before PR; outside-host alert/reminder evidence is absent, so 14 is incomplete and 15 blocked. Ticket 03 research/collector cleanup continues independently; ticket 04 remains incomplete and 05/17 blocked.
 
 PR 13 feedback checkpoint, 2026-11-15 IST: Greptile reviewed remote `2f19c9d` at 4/5 and correctly found that deleting the mixed runner test file also removed three standalone kept safeguards. Coordinator restored them in isolated `tests/test_kept_safeguards.py`: truncated Telegram reply handling, synthetic-token-safe errors/repr, and synthetic legacy-holdout account refusal with no log write. Telegram calls are intercepted with a fake opener; no network/account/vault data is used. Audited 44 local transitive files and reran exactly five approved files: 19 passed in 2.90s, zero safety refusals. The narrower integration-only review at 6c62c81 was canceled before this superseding test change; a fresh combined integration/fix review must pass before push. No production code changed for this finding. PR 13 remains watched; no merge on its older head.
