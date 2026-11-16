@@ -12,11 +12,17 @@ Entry format:
 
 ---
 
+## 2026-11-16 — Multi-pack openings return an explicitly closable session instead of an unowned tuple of iterators
+- rejected: relying on iterator exhaustion or garbage collection to release unread snapshots
+- why: a caller can stop early or raise while nearly 8 GiB of selected snapshots remain retained. A session context manager closes every iterator, including unstarted ones, and attempts all cleanup callbacks if one fails. The legacy single-pack return tuple stays unchanged, with an explicitly closable iterator. Metadata, audit ordering and resource limits are unchanged; no filesystem opening or OS isolation is verified.
+- source: PR 17 Greptile thread `PRRT_kwDOVQuzD863wFSp`, handled in this coordinator thread on 2026-11-16 IST
+- status: active; supersedes the bare multi-pack return representation only, not the frozen-selection/audit decision below
+
 ## 2026-11-16 — One owner style opening binds an explicit ordered pack selection and verifies all selected snapshots before exposure
 - rejected: per-pack authorizations consuming a style opening, directory discovery after authorization, returning early pack rows before later selection verification, and inferring single-pack identity by reading blind bytes before audit
 - why: daily and later minute packs must share one frozen style opening. Bind identifiers, kinds, canonical manifest digests and content digests to the request hash and durable audit. Require frozen metadata even in the legacy single-pack wrapper. Bound selection to256packs and snapshots to8GiB with an8MiB retained-spool budget; these are explicit implementation limits, not accepted real-corpus capacity. Pure metadata/policy tests and static wiring inspection do not verify owner filesystem opening, OS identity separation, authenticated IPC or physical crash recovery. 04 remains incomplete and05/17 blocked.
 - source: coordinator thread `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:d78501ea892b7b4e6660f492ed746eb687fdee6763e536aee24baa0788e6ff80`; implementation `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3Ae296ab3f-15d2-43a7-9614-a078802328c5%3Adelegate-task%3Akairos-ai-ticket04-multipack-20261116-01`
-- status: active implementation choice; independent exact-head review and owner-controlled acceptance pending; no opening/deployment authorization
+- status: active frozen-selection/audit choice; bare return representation superseded by 2026-11-16 closable-session decision above; owner-controlled acceptance pending; no opening/deployment authorization
 
 ## 2026-11-15 — Ticket 04 uses manifest-selected Parquet alongside backward-compatible default JSONL
 - rejected: JSONL-only minute storage, guessing encoding from extensions, adding a new dependency, or declaring vault protection and capacity proven from synthetic packs

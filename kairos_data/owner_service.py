@@ -8,6 +8,7 @@ of identity against arbitrary code running as the same OS user.
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import datetime
 import fcntl
@@ -256,11 +257,60 @@ _MAX_SESSION_SNAPSHOT_BYTES = 8 * 1024 * 1024 * 1024
 _MAX_SESSION_SNAPSHOT_MEMORY_BYTES = 8 * 1024 * 1024
 
 
+class _SnapshotRows(Iterator[dict[str, Any]]):
+    def __init__(self, rows: Iterator[dict[str, Any]], snapshot: BinaryIO):
+        self._rows = rows
+        self._snapshot = snapshot
+        self._closed = False
+
+    def __iter__(self) -> _SnapshotRows:
+        return self
+
+    def __next__(self) -> dict[str, Any]:
+        if self._closed:
+            raise StopIteration
+        try:
+            return next(self._rows)
+        except BaseException:
+            self.close()
+            raise
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            close_rows = getattr(self._rows, "close", None)
+            if close_rows is not None:
+                close_rows()
+        finally:
+            self._snapshot.close()
+
+
 @dataclass(frozen=True)
 class OpenedPackRows:
     identifier: str
     kind: PackKind
-    rows: Iterator[dict[str, Any]]
+    rows: _SnapshotRows
+
+
+@dataclass(frozen=True)
+class OpenedSession:
+    """Own all selected snapshots; use a context manager or call close()."""
+
+    audit: OpeningAudit
+    packs: tuple[OpenedPackRows, ...]
+
+    def close(self) -> None:
+        with ExitStack() as resources:
+            for pack in self.packs:
+                resources.callback(pack.rows.close)
+
+    def __enter__(self) -> OpenedSession:
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()
 
 
 def _resolve_selected_pack(root: Path, identifier: str) -> Path:
@@ -284,13 +334,15 @@ def open_final_test_session(
     authorizer: OwnerAuthorizer,
     audit_log: str | Path,
     vault_root: str | Path,
-) -> tuple[OpeningAudit, tuple[OpenedPackRows, ...]]:
+) -> OpenedSession:
     """Open exactly the request's frozen pack collection after durable audit.
 
     Deploy this function only in the OS-isolated owner process. The training
     process must not have filesystem access to ``vault_root`` or ``audit_log``.
     It resolves no directory listing and yields no rows unless every selected
     pack matches its frozen kind, manifest digest, and content digest.
+    Use the returned session as a context manager or close it explicitly to
+    release every snapshot, including packs that were never iterated.
     """
     validate_opening_request(request)
     selection = freeze_pack_selection(request.pack_selection)
@@ -330,24 +382,17 @@ def open_final_test_session(
                 raise
 
         opened = tuple(
-            OpenedPackRows(expected.identifier, manifest.kind, _read_snapshot_rows(snapshot, manifest))
+            OpenedPackRows(
+                expected.identifier, manifest.kind,
+                _SnapshotRows(_read_snapshot_rows(snapshot, manifest), snapshot),
+            )
             for expected, manifest, snapshot in snapshots
         )
-        return audit, tuple(
-            OpenedPackRows(item.identifier, item.kind, _closing_rows(item.rows, snapshots[index][2]))
-            for index, item in enumerate(opened)
-        )
+        return OpenedSession(audit, opened)
     except BaseException:
         for _, _, snapshot in snapshots:
             snapshot.close()
         raise
-
-
-def _closing_rows(rows: Iterator[dict[str, Any]], snapshot: BinaryIO) -> Iterator[dict[str, Any]]:
-    try:
-        yield from rows
-    finally:
-        snapshot.close()
 
 
 def open_final_test_rows(
@@ -357,11 +402,12 @@ def open_final_test_rows(
     audit_log: str | Path,
     vault_root: str | Path,
     pack: str | Path,
-) -> tuple[OpeningAudit, PackKind, Iterator[dict[str, Any]]]:
+) -> tuple[OpeningAudit, PackKind, _SnapshotRows]:
     """Compatibility wrapper for exactly one pack named by the frozen request.
 
     The caller must supply a one-pack authorized selection. This wrapper cannot
     infer a digest by reading the pack before the durable authorization record.
+    Close the returned row iterator if it is not fully consumed.
     """
     selected = freeze_pack_selection(request.pack_selection)
     if len(selected.packs) != 1:
@@ -373,11 +419,11 @@ def open_final_test_rows(
     validate_pack_identifier(identifier)
     if identifier != selected.packs[0].identifier:
         raise ValueError("single-pack path must match the frozen selection identifier")
-    audit, packs = open_final_test_session(
+    session = open_final_test_session(
         request,
         authorizer=authorizer,
         audit_log=audit_log,
         vault_root=vault_root,
     )
-    item = packs[0]
-    return audit, item.kind, item.rows
+    item = session.packs[0]
+    return session.audit, item.kind, item.rows

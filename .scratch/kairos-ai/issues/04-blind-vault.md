@@ -42,6 +42,22 @@ Greptile correctly identified a committed coverage gap: malformed manifest schem
 
 Coordinator follow-up strengthens the metadata-only proof: each selection field and ordering independently changes the request hash, and the audit record contains the exact canonical requested selection. The guarded three-file selection now passes **35 tests and19subtests**, zero safety refusals, after a10-local-file import audit. No filesystem opening function or final-test entry point was invoked. Limits of256packs/8GiB are unvalidated for the actual corpus; single-pack callers must now provide frozen expectations. Fresh exact-head review is pending. Neither passing policy tests nor code merge accepts the filesystem opening, OS/IPC isolation or real migration.
 
+PR 17 Greptile cleanup follow-up, 2026-11-16 IST: accepted P2 thread
+`PRRT_kwDOVQuzD863wFSp`. Unread generators could retain private snapshots
+without a collective cleanup operation. The owner contract now returns an
+`OpenedSession` with `audit`, ordered `packs`, `close()`, and context-manager
+support. Its cleanup attempts every row iterator even if another close raises.
+The single-pack wrapper retains its return tuple and returns an iterator whose
+explicit close works before iteration starts. Iterators close on exhaustion
+and failure. Only empty in-memory streams and synthetic iterators exercise
+cleanup; no packs are created by these new tests and neither opening function
+is called. The focused guarded selection passed **39 tests and 22 subtests**,
+zero safety refusals, after auditing ten local files and startup configuration.
+Independent fix review and current-head remote acceptance remain pending.
+Owner filesystem opening, OS identity isolation/authenticated IPC, physical
+crash recovery, real migration/counts/checksums, and actual capacity remain
+unverified. Ticket 04 is incomplete and 05/17 remain blocked.
+
 Added `kairos_data.owner_session` pure metadata for an explicit ordered collection of at most 256 relative pack identifiers. Identifiers reject absolute, traversal, empty-component, duplicate, backslash, and drive-like paths. Each selection entry freezes daily/minute kind, canonical manifest SHA-256, and payload SHA-256. The owner request hash and durable audit record include that ordered selection and its digest. The owner entry point requires a nonempty selection, durably audits it before resolving/opening selected packs, enumerates no vault directories, verifies every selected blind pack into private snapshots before returning any row iterator, and caps aggregate snapshots at 8 GiB with 8 MiB maximum retained in-memory spool space. The old one-pack entry point is a thin wrapper that requires exactly the same one-entry frozen selection.
 
 Synthetic helper and policy tests do not call either final-test opening function and create no pack files. The owner-only filesystem opening path is explicitly **UNVERIFIED**. This change does not provide OS identity isolation or authenticated IPC; same-user Python code can still bypass module boundaries and filesystem policy. The fixed 256-pack/8-GiB disk/8-MiB memory caps are implementation bounds, not evidence that actual blind daily/minute packs fit. Ticket 04 remains incomplete and tickets 05/17 remain blocked. No vault or real data was opened; no historical result was calculated.

@@ -1,9 +1,10 @@
-"""Synthetic owner selection metadata and audit policy tests only.
+"""Synthetic owner metadata, audit policy, and resource ownership tests only.
 
 These tests must not call either final-test opening entry point or create packs.
 """
 
 from dataclasses import replace
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -15,7 +16,10 @@ from kairos_data.owner_session import (
     selection_value,
 )
 from kairos_data.owner_service import (
+    OpenedPackRows,
+    OpenedSession,
     OpeningRequest,
+    _SnapshotRows,
     _request_hash,
     authorize_and_audit,
     model_fingerprint,
@@ -129,6 +133,76 @@ class OwnerSessionMetadataTests(unittest.TestCase):
                     audit_log=audit_path,
                 )
             self.assertFalse(audit_path.exists())
+
+
+class OwnerSessionCleanupTests(unittest.TestCase):
+    def session(self, *streams):
+        with tempfile.TemporaryDirectory() as directory:
+            audit = authorize_and_audit(
+                request((pack("daily/one"),)),
+                authorizer=_AllowOwner(),
+                audit_log=Path(directory) / "audit.jsonl",
+            )
+        opened = tuple(
+            OpenedPackRows(
+                f"daily/{index}", PackKind.DAILY,
+                _SnapshotRows(iter(({"value": 1}, {"value": 2})), stream),
+            )
+            for index, stream in enumerate(streams)
+        )
+        return OpenedSession(audit, opened)
+
+    def test_close_releases_partial_and_unstarted_snapshots_idempotently(self):
+        streams = (io.BytesIO(), io.BytesIO())
+        session = self.session(*streams)
+        self.assertEqual(next(session.packs[0].rows), {"value": 1})
+        session.close()
+        session.close()
+        self.assertTrue(all(stream.closed for stream in streams))
+        for opened in session.packs:
+            self.assertEqual(list(opened.rows), [])
+
+    def test_context_exception_closes_every_unread_snapshot(self):
+        streams = (io.BytesIO(), io.BytesIO())
+        session = self.session(*streams)
+        with self.assertRaisesRegex(RuntimeError, "caller failed"):
+            with session as opened:
+                self.assertIs(opened, session)
+                raise RuntimeError("caller failed")
+        self.assertTrue(all(stream.closed for stream in streams))
+
+    def test_iterator_close_exhaustion_and_failure_release_snapshot(self):
+        for action in ("unstarted", "exhausted", "failed"):
+            with self.subTest(action=action):
+                stream = io.BytesIO()
+                if action == "failed":
+                    def failing_rows():
+                        raise ValueError("synthetic read failed")
+                        yield {}
+                    rows = _SnapshotRows(failing_rows(), stream)
+                    with self.assertRaisesRegex(ValueError, "synthetic read failed"):
+                        next(rows)
+                else:
+                    rows = _SnapshotRows(iter(({"value": 1},)), stream)
+                    if action == "exhausted":
+                        self.assertEqual(list(rows), [{"value": 1}])
+                    else:
+                        rows.close()
+                self.assertTrue(stream.closed)
+                self.assertEqual(list(rows), [])
+                rows.close()
+
+    def test_cleanup_attempts_all_snapshots_when_one_close_fails(self):
+        class FailingClose(io.BytesIO):
+            def close(self):
+                super().close()
+                raise OSError("synthetic close failed")
+
+        streams = (io.BytesIO(), FailingClose())
+        session = self.session(*streams)
+        with self.assertRaisesRegex(OSError, "synthetic close failed"):
+            session.close()
+        self.assertTrue(all(stream.closed for stream in streams))
 
 
 if __name__ == "__main__":

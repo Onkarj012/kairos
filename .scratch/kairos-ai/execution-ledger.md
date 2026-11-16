@@ -1,5 +1,17 @@
 # Kairos AI execution ledger
 
+PR 17 review follow-up, 2026-11-16 IST: exact `9bac62b` received independent
+Sol high approval, Greptile SUCCESS with 4/5 confidence, and CodeRabbit SKIPPED.
+Greptile's P2 unread-snapshot finding is valid. The coordinator added an
+explicitly closable/context-managed session and idempotently closable row
+iterators, preserving the single-pack return tuple. Synthetic empty-memory
+stream tests cover partial and unread cleanup, caller exceptions, exhaustion,
+iteration failure, and cleanup continuation after a close error. Guarded
+three-file validation: 39 tests and 22 subtests passed, zero safety refusals,
+ten audited local files. Neither opening function was invoked. Fresh exact-head
+review and remote acceptance of this fix remain pending. Ticket 04 remains
+incomplete; 05/17 and paper 15 remain blocked; 14 remains incomplete.
+
 Multi-pack checkpoint, 2026-11-16 IST: PR16 merged as
 `c9462bf77ae67c789d99897f3ecbf56eec330897` after exactfda065e Sol high approval,
 Greptile5/5/SUCCESS, CodeRabbitSKIPPED and resolvedthread; watch removed.

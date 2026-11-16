@@ -40,11 +40,18 @@ selection. It does not enumerate the vault. After authorization is durable,
 the owner path verifies every selected blind pack into private snapshots before
 returning any row iterator. Selection is limited to 256 packs, 8 GiB of
 aggregate snapshot bytes, and 8 MiB of aggregate in-memory spool space. The
+returned `OpenedSession` exposes `audit` and ordered `packs`; use it as a
+context manager or call `close()` explicitly. Session cleanup closes all row
+iterators and snapshots, including unread packs, and attempts every cleanup
+even if one fails. Individual row iterators also support idempotent `close()`
+before iteration starts and close on exhaustion or iteration failure. The
 legacy one-pack wrapper requires the same frozen one-pack metadata and cannot
-infer authorization from a path.
+infer authorization from a path. Its return tuple is unchanged; close its row
+iterator explicitly when stopping early or leaving it unread.
 
 `owner_session` contains pure metadata validation only; it grants no access.
-Tests cover that helper and the policy-only durable audit record. The
+Tests cover that helper, the policy-only durable audit record, and cleanup
+using empty in-memory streams with synthetic iterators, not pack fixtures. The
 owner-only filesystem opening functions are intentionally not executed by
 these tests and remain **UNVERIFIED**. This code does not implement enforced
 OS/IPC protection. Ticket 04 remains incomplete; tickets 05 and 17 remain
