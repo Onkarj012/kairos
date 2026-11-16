@@ -70,6 +70,11 @@ identity derived from those credentials, and a nonblank reason is required.
 The service process's effective UID must match its configured service UID.
 No environment variable or caller-supplied owner name grants access.
 
+These are the credentials captured when the connection was established, not
+per-message proof of the peer's current privileges. A later deployment must
+keep owner-approved connection handles under trusted control, never hand them
+to training code, and account for its Linux user-namespace configuration.
+
 The adapter implements the existing `OwnerAuthorizer` method shape and does
 not alter any opening function. Supplying a fake Python object or changing
 arguments inside the trusted service process is not authentication against

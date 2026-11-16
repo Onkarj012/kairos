@@ -12,6 +12,12 @@ Entry format:
 
 ---
 
+## 2026-11-16 — Prepare Linux owner-boundary helpers with root-peer approval and supplied layout metadata checks
+- rejected: trainer-user requests, requester strings or environment flags as owner identity; provisioning identities/services or inspecting protected paths during an offline code task
+- why: service and training need distinct non-root OS identities. The adapter checks the service effective UID, derives connection-time peer credentials through Linux SO_PEERCRED and accepts only a matching canonical root-peer requester with a nonblank reason. Pure metadata validation checks root-controlled code/config and ancestors plus private service directories without filesystem access. Fake handles and metadata tests cannot prove kernel identity, deployed isolation, race-free path enforcement or namespace policy. A later separately authorized deployment must enforce those conditions before any owner operation.
+- source: owner continuation in this coordinator thread after PR17 merge00e3e89; implementation `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A3a0f4443-ed8c-4db8-b4c7-3fa775dc905c%3Adelegate-task%3Akairos-ai-ticket04-owner-boundary-20261116-01`
+- status: active bounded helper scope, independent review pending; no provisioning/opening authorization;04incomplete05/17blocked
+
 ## 2026-11-16 — Multi-pack openings return an explicitly closable session instead of an unowned tuple of iterators
 - rejected: relying on iterator exhaustion or garbage collection to release unread snapshots
 - why: a caller can stop early or raise while nearly 8 GiB of selected snapshots remain retained. A session context manager closes every iterator, including unstarted ones, and attempts all cleanup callbacks if one fails. The legacy single-pack return tuple stays unchanged, with an explicitly closable iterator. Metadata, audit ordering and resource limits are unchanged; no filesystem opening or OS isolation is verified.

@@ -68,6 +68,17 @@ Validation evidence: `tests/test_owner_session.py` is restricted to synthetic de
 
 ## Offline owner-boundary architecture candidate (2026-11-16 IST)
 
+Worker implementation9c5d466 and coordinator inspection used only the four
+permitted implementation/test/doc paths; coordinator ledger and decisions are
+added separately for review. After auditing the focused imports, package
+initializers, harness, startup and pytest configuration, the exact authorized
+four-file guarded selection passed **43 tests and 45 subtests** with zero safety
+refusals. The existing harness was unchanged. The coordinator removed an unused
+duplicate protocol and documented that credentials are captured at connection
+establishment, not fresh per-message privilege attestations. Independent
+exact-head review remains pending. No real socket, protected path, vault or
+opening entry point was used, including no monkeypatched opening calls.
+
 Added `kairos_data.owner_boundary`, a helper-only Linux candidate for a later
 dedicated owner service. It validates distinct non-root integer service and
 training UIDs, extracts peer PID/UID/GID from an already-connected AF_UNIX

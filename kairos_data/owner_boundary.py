@@ -13,11 +13,9 @@ import socket
 import struct
 import stat
 import sys
-from typing import Protocol
 
 
 _U32_MAX = (1 << 32) - 1
-# Linux reserves the all-ones uid_t/gid_t value as an invalid identity.
 _UCRED = struct.Struct("=iII")
 
 
@@ -80,12 +78,6 @@ def peer_credentials(connected_stream: object) -> PeerCredentials:
     if pid <= 0 or not 0 <= uid < _U32_MAX or not 0 <= gid < _U32_MAX:
         raise ValueError("kernel peer credentials contain an invalid PID, UID, or GID")
     return PeerCredentials(pid=pid, uid=uid, gid=gid)
-
-
-class OwnerAuthorizer(Protocol):
-    """Structural shape already consumed by ``owner_service``."""
-
-    def authorize(self, requester: str, reason: str) -> bool: ...
 
 
 def canonical_peer_requester(credentials: PeerCredentials) -> str:
