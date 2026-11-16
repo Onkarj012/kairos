@@ -65,3 +65,27 @@ Synthetic helper and policy tests do not call either final-test opening function
 Architecture choices for coordinator decisions log: bind a canonical ordered descriptor (relative identifier, kind, manifest digest, payload digest) into the one-per-style audit; reject implicit enumeration and require explicit IDs; retain all verified private snapshots until the complete collection validates, with a bounded 8-GiB aggregate cap. Rejected per-pack authorizations because ticket 30 requires one opening per style, and rejected path-only selections because later enumeration or replacement could change the collection after authorization. Source: implementation sub-agent thread, 2026-11-16 IST. Status: bounded implementation added; owner acceptance and OS/IPC isolation pending.
 
 Validation evidence: `tests/test_owner_session.py` is restricted to synthetic descriptor validation and policy-only audit behavior. Static search confirmed none of the selected tests call `open_final_test_rows` or `open_final_test_session`. The guarded command was `CHECK_TMP="$(mktemp -d /tmp/kairos04-multipack-check.XXXXXX)"; TMPDIR="$CHECK_TMP" PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTEST_ADDOPTS= /usr/bin/python3 -I -S -B /tmp/kairos-safe-focused-check.py "$PWD" tests/test_owner_session.py tests/test_blind_vault.py tests/test_compact_packs.py`; result: **34 passed, 14 subtests passed**, safety refusals `[]`, local import audit contained 10 paths. Environment showed no inherited `PYTEST_ADDOPTS`; `pyproject.toml` config has no plugins or addopts; the harness rejected any conftest or startup hooks in the audited paths. The filesystem opening integration remains **UNVERIFIED** by design.
+
+## Offline owner-boundary architecture candidate (2026-11-16 IST)
+
+Added `kairos_data.owner_boundary`, a helper-only Linux candidate for a later
+dedicated owner service. It validates distinct non-root integer service and
+training UIDs, extracts peer PID/UID/GID from an already-connected AF_UNIX
+stream using `SO_PEERCRED`, and adapts the existing `OwnerAuthorizer` protocol.
+Only root UID 0 peer credentials can represent owner approval. The requester's
+identity must match the canonical kernel-peer identity, the reason must be
+nonblank, and the process effective UID must match the configured service UID.
+Fake Python objects and same-process code are not an authentication boundary.
+
+The protected-layout helper validates immutable supplied stat metadata for
+root-owned non-writable code/config and root-controlled ancestors, plus
+service-owned private data, audit, and runtime directories. It performs no
+filesystem access and its results are not race-proof enforcement, provisioning,
+or proof of live ownership. Later deployment must safely derive and enforce the
+protected layout before loading service code. No protected root or vault was
+inspected; no listener or socket lifecycle code was added.
+
+Ticket 04 remains **INCOMPLETE**; tickets 05 and 17 remain **BLOCKED**. Ticket
+14 remains **INCOMPLETE** and paper ticket 15 remains **BLOCKED**. This is an
+architecture candidate only, not a claim of real OS isolation or an
+authenticated deployed service.
