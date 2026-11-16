@@ -68,6 +68,17 @@ Validation evidence: `tests/test_owner_session.py` is restricted to synthetic de
 
 ## Offline owner-boundary architecture candidate (2026-11-16 IST)
 
+PR18 portability follow-up, 2026-11-16 IST: accepted Greptile P2 thread
+`PRRT_kwDOVQuzD863xr7X`. Linux-specific peer-test setup now patches both the
+platform and SO_PEERCRED for the entire test, including requester lookup.
+A regression executes both peer cases under simulated darwin with the socket
+constant absent, requiring no failures, errors or skips and restored mocks.
+It reproduced both prior errors before the setup fix. The guarded four-file
+selection now passes **44 tests and 45 subtests**, zero safety refusals.
+This is simulated portability evidence, not an actual macOS test run.
+Production helper code is unchanged; no real sockets, protected paths, opening
+entry points or deployments were used. Independent fix review pending.
+
 Worker implementation9c5d466 and coordinator inspection used only the four
 permitted implementation/test/doc paths; coordinator ledger and decisions are
 added separately for review. After auditing the focused imports, package

@@ -59,6 +59,10 @@ class OwnerBoundaryIdentityTests(unittest.TestCase):
 
 
 class OwnerBoundaryPeerTests(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch("kairos_data.owner_boundary.sys.platform", "linux"))
+        self.enterContext(patch.object(socket, "SO_PEERCRED", object(), create=True))
+
     def test_peer_identity_comes_from_connected_linux_unix_stream_credentials(self):
         valid = fake_socket(struct.pack("3i", 42, 0, 100))
         with patch("kairos_data.owner_boundary.sys.platform", "linux"):
@@ -114,6 +118,22 @@ class OwnerBoundaryPeerTests(unittest.TestCase):
             "kairos_data.owner_boundary.os.geteuid", return_value=1202
         ):
             self.assertFalse(authorizer.authorize(canonical, "owner acceptance"))
+
+
+class OwnerBoundaryPortabilityTests(unittest.TestCase):
+    def test_synthetic_peer_cases_work_without_linux_host_or_socket_constant(self):
+        with patch("kairos_data.owner_boundary.sys.platform", "darwin"), patch.dict(
+            socket.__dict__
+        ):
+            socket.__dict__.pop("SO_PEERCRED", None)
+            suite = unittest.defaultTestLoader.loadTestsFromTestCase(OwnerBoundaryPeerTests)
+            result = unittest.TestResult()
+            suite.run(result)
+            self.assertEqual(result.testsRun, 2)
+            self.assertEqual(result.errors, [])
+            self.assertEqual(result.failures, [])
+            self.assertEqual(result.skipped, [])
+            self.assertFalse(hasattr(socket, "SO_PEERCRED"))
 
 
 class ProtectedLayoutTests(unittest.TestCase):

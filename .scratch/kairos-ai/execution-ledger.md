@@ -1,5 +1,17 @@
 # Kairos AI execution ledger
 
+PR18 portability fix, 2026-11-16 IST: Greptile P2 thread
+PRRT_kwDOVQuzD863xr7X correctly identified an unpatched requester assertion and
+missing SO_PEERCRED on non-Linux test hosts. Peer-test setup now mocks Linux
+and the socket constant for the complete test lifecycle. A regression reruns
+both peer cases under simulated darwin with SO_PEERCRED absent, requires no
+errors/failures/skips, and checks constant cleanup. Before the setup fix it
+failed with both reported errors. Guarded four-file selection passes44tests
+and45subtests, zero safety refusals. Actual macOS execution is unverified.
+Only tests and explanatory metadata change; production and decisions unchanged.
+Independent exact-head recheck and remote acceptance pending;04incomplete,
+05/17blocked14incompletepaper15blocked. No real socket/opening/deployment.
+
 Owner-boundary candidate checkpoint, 2026-11-16 IST: worker9c5d466 on exact
 base00e3e89 adds only owner_boundary.py, its synthetic test, README and ticket04
 evidence. Coordinator inspected source/tests and removed an unused duplicate
