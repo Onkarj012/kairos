@@ -91,6 +91,43 @@ class CompactPackTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid pack manifest"):
             next(read_verified_pack(pack, expected_partition="pre2025"))
 
+    def test_well_formed_manifest_schema_mismatches_yield_nothing(self):
+        for field, key, incorrect in ((1, "name", "wrong_symbol"), (2, "type", "int64")):
+            with self.subTest(key=key):
+                pack = self.root / ("schema-" + key)
+                write_pack(pack, [row("2024-12-31")], kind="daily", partition="pre2025", encoding="parquet")
+                manifest_path = pack / "manifest.json"
+                manifest = json.loads(manifest_path.read_text())
+                manifest["schema"][field][key] = incorrect
+                manifest_path.write_text(json.dumps(manifest))
+                result = read_verified_pack(pack, expected_partition="pre2025")
+                with self.assertRaisesRegex(ValueError, "Parquet schema does not match manifest"):
+                    next(result)
+
+    def test_incorrect_embedded_schema_metadata_yields_nothing(self):
+        import pyarrow.parquet as parquet
+
+        pack = self.root / "embedded-schema"
+        write_pack(pack, [row("2024-12-31")], kind="daily", partition="pre2025", encoding="parquet")
+        payload = pack / "rows.parquet"
+        reader = parquet.ParquetFile(payload)
+        try:
+            table = reader.read()
+        finally:
+            reader.close()
+        metadata = dict(table.schema.metadata)
+        embedded_schema = json.loads(metadata[b"kairos.schema"])
+        embedded_schema[1]["name"] = "wrong_symbol"
+        metadata[b"kairos.schema"] = json.dumps(embedded_schema, separators=(",", ":")).encode()
+        parquet.write_table(table.replace_schema_metadata(metadata), payload)
+        manifest_path = pack / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["sha256"] = hashlib.sha256(payload.read_bytes()).hexdigest()
+        manifest_path.write_text(json.dumps(manifest))
+        result = read_verified_pack(pack, expected_partition="pre2025")
+        with self.assertRaisesRegex(ValueError, "Parquet schema metadata is missing or malformed"):
+            next(result)
+
     def test_one_pass_batches_and_schema_drift_refused(self):
         import pyarrow.parquet as parquet
 

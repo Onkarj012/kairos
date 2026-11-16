@@ -1,5 +1,17 @@
 # Kairos AI execution ledger
 
+PR16 schema-coverage checkpoint, 2026-11-16 IST: independent Sol high approved
+d750e20 and the branch was published as https://github.com/Onkarj012/kairos/pull/16.
+Greptile SUCCESS at4/5 correctly found that the malformed-schema regression
+stopped at manifest parsing instead of exercising schema comparisons. Added
+direct pre-first-yield failures for valid manifest metadata with incorrect names
+and types, and incorrect embedded kairos.schema metadata with an updated byte
+checksum. No production code changes. Guarded focused selection now passes
+29 tests plus7subtests, zero safety refusals, eight audited local files. Fresh
+exact-head review is required before pushing these fixes; current remote remains
+d750e20. 04 incomplete,05/17 blocked; no real data, vault or final-test invocation,
+Mac, installation, deployment or owner-root writes.
+
 Compact-pack checkpoint, 2026-11-15 IST: PR 15 merged as
 `4e858ffaaacc1e206b1a40c750efd9dbaa00c148` after exact cc51000 Sol high approval,
 Greptile 5/5/SUCCESS, CodeRabbit SKIPPED and no unresolved threads. Watch removed;
