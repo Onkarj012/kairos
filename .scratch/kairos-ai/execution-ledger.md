@@ -1,5 +1,37 @@
 # Kairos AI execution ledger
 
+PR16 schema-coverage checkpoint, 2026-11-16 IST: independent Sol high approved
+d750e20 and the branch was published as https://github.com/Onkarj012/kairos/pull/16.
+Greptile SUCCESS at4/5 correctly found that the malformed-schema regression
+stopped at manifest parsing instead of exercising schema comparisons. Added
+direct pre-first-yield failures for valid manifest metadata with incorrect names
+and types, and incorrect embedded kairos.schema metadata with an updated byte
+checksum. No production code changes. Guarded focused selection now passes
+29 tests plus7subtests, zero safety refusals, eight audited local files. Fresh
+exact-head review is required before pushing these fixes; current remote remains
+d750e20. 04 incomplete,05/17 blocked; no real data, vault or final-test invocation,
+Mac, installation, deployment or owner-root writes.
+
+Compact-pack checkpoint, 2026-11-15 IST: PR 15 merged as
+`4e858ffaaacc1e206b1a40c750efd9dbaa00c148` after exact cc51000 Sol high approval,
+Greptile 5/5/SUCCESS, CodeRabbit SKIPPED and no unresolved threads. Watch removed;
+cleanup evidence accepted within scope, not actual stored-panel/calendar proof.
+Ticket 04 compact follow-up worker
+`t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket04-compact-20261115-01`
+committed 6062dbd from that main in its provided isolated checkout. Coordinator
+inspected all five paths and the eight-file local import closure, reproduced an
+all-null Parquet column metadata failure, and fixed it with a regression that
+also refuses type drift after schema freezing. Exact focused selection now has
+27 passed plus 5 subtests, zero safety refusals; diff checks pass. Existing
+synthetic live-window and owner policy tests were retained; no final-test entry
+point was called. Independent exact-head review is pending; no push or PR yet.
+JSONL remains the default and old manifests remain readable. Compact evidence
+is synthetic only, not a real capacity estimate. OS-isolated owner service,
+authenticated IPC, multi-pack opening and real migration/count/checksum evidence
+remain absent: 04 incomplete, 05/17 blocked. Ticket 14 remains incomplete and
+paper-ticket 15 blocked. No installs, Mac/data access, host service action or
+owner-root writes occurred.
+
 Current-main integration checkpoint, 2026-11-15 IST: PR 14 squash-merged as
 `b86f709a36f651dc5526f5ea64d5ca2f3b3ac67a` after exact cea2ce7 Sol high approval,
 Greptile 5/5/SUCCESS, CodeRabbit SKIPPED, resolved threads and owner ADMIN check.
@@ -64,7 +96,7 @@ Initial disjoint implementation scopes after setup: ticket 01 owns operations/ac
 | Setup | merged, evidence accepted | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-setup-20261115-01` | `t3/kairos-ai-setup` | https://github.com/Onkarj012/kairos/pull/9 | Merge 31cd294; static checks; exact-head Sol approval; Greptile 5/5; no unresolved threads | none |
 | 01 | merged; cleanup evidence accepted | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket01-20261115-01` | `t3/kairos-ai-01-kept-parts` | https://github.com/Onkarj012/kairos/pull/11 | Merge b993634; final head 7db9535 Sol high approved; 10 synthetic tests; Greptile 5/5/SUCCESS; no unresolved threads | Calendar provisioning and actual-history integration unverified; legacy cutoff handoff to 03/04 |
 | 02 | merged; scoped cleanup evidence accepted | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket02-20261115-01` | t3/kairos-ai-02-remove-old-runner | https://github.com/Onkarj012/kairos/pull/13 | Merge6223a37; exact0e858e7 Sol high approved;19synthetic checks;Greptile5/5/SUCCESS;no threads | Actual login/calendar/notification/real-history behavior unverified;no deployment |
-| 03 | approved coverage fixes; current-main integration review pending | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket03-20261115-01` | t3/kairos-ai-03-remove-research-gates | none | c91e4d3 Sol high approved; 37 focused synthetic checks; 27-local-file audit; actual CLI refusal; all 25 deletions explained | Exact integrated-head review/PR/checks/merge; actual stored-data rebuild and calendar provisioning unverified |
+| 03 | merged; scoped cleanup evidence accepted | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket03-20261115-01` | t3/kairos-ai-03-remove-research-gates | https://github.com/Onkarj012/kairos/pull/15 | Merge 4e858ff; exact cc51000 Sol high approved; 45 guarded tests; Greptile 5/5/SUCCESS; all 25 deletions explained | Actual stored-data rebuild and calendar provisioning unverified |
 | 04 | infrastructure merged; ticket evidence incomplete | `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A8d28fe84-fecd-4bcf-a8ca-67a3424b45b5%3Adelegate-task%3Akairos-ai-ticket04-20261115-01` | `t3/kairos-ai-04-blind-vault` | https://github.com/Onkarj012/kairos/pull/10 | Merge 1e3d4fb; Sol high and Greptile 5/5 at exact head 08e07c7; 16 synthetic tests | Dedicated owner-service OS/IPC enforcement and real partition/count/checksum evidence absent; 05/17 remain blocked |
 | 05 | blocked | — | — | — | Dataset rows/counts, three checks, masked ambiguous target/stop answers | 04 |
 | 06 | blocked | — | — | — | Yardstick results table and run records | 05 |

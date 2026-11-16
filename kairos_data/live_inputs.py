@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from .storage import PackKind, _verify, read_verified_pack
+from .storage import PackKind, read_verified_pack
 
 _FORBIDDEN_COLUMN = re.compile(
     r"(^|_)(next|lead|forward|fwd|label|target|future|answer|score|return|pnl|outcome)(_|$)|^y_",
@@ -59,12 +59,12 @@ def read_live_inputs(
 
     result: list[dict[str, Any]] = []
     for session_date, pack_path in selected:
-        manifest, _ = _verify(pack_path, expected_partition="live")
-        if manifest.kind != PackKind.DAILY:
-            raise ValueError("live input reader accepts daily packs only")
-        if manifest.first_date != session_date.isoformat() or manifest.last_date != session_date.isoformat():
-            raise ValueError("live pack date must match its session directory")
-        for row in read_verified_pack(pack_path, expected_partition="live"):
+        for row in read_verified_pack(
+            pack_path,
+            expected_partition="live",
+            expected_kind=PackKind.DAILY,
+            expected_date=session_date.isoformat(),
+        ):
             if date.fromisoformat(str(row["date"])[:10]) != session_date:
                 raise ValueError("live row date must match its selected completed session")
             missing = set(input_columns) - row.keys()
