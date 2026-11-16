@@ -32,7 +32,22 @@ against its JSONL form. It is not a capacity estimate for 439 million real
 rows, does not establish that the Mac's 22 GB source fits in available space,
 and does not record a migration or actual source-data size.
 
-This package does not implement multi-pack owner opening or enforced OS/IPC
-protection. Those remain required before ticket 04 can be accepted; tickets 05
-and 17 remain blocked pending accepted isolation and authorized real migration
-evidence. Do not use this implementation to open the final-test entry point.
+`owner_service.open_final_test_session` accepts only a nonempty, explicitly
+ordered frozen selection of relative pack identifiers. Each entry binds daily
+or minute kind plus canonical manifest and content SHA-256 digests. The request
+hash and durable one-per-style audit line include the complete ordered
+selection. It does not enumerate the vault. After authorization is durable,
+the owner path verifies every selected blind pack into private snapshots before
+returning any row iterator. Selection is limited to 256 packs, 8 GiB of
+aggregate snapshot bytes, and 8 MiB of aggregate in-memory spool space. The
+legacy one-pack wrapper requires the same frozen one-pack metadata and cannot
+infer authorization from a path.
+
+`owner_session` contains pure metadata validation only; it grants no access.
+Tests cover that helper and the policy-only durable audit record. The
+owner-only filesystem opening functions are intentionally not executed by
+these tests and remain **UNVERIFIED**. This code does not implement enforced
+OS/IPC protection. Ticket 04 remains incomplete; tickets 05 and 17 remain
+blocked pending accepted owner-controlled opening, isolation, and authorized
+real migration evidence. Do not use this implementation to open the final-test
+entry point outside owner-controlled acceptance.
