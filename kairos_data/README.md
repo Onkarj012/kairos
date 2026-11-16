@@ -58,3 +58,42 @@ OS/IPC protection. Ticket 04 remains incomplete; tickets 05 and 17 remain
 blocked pending accepted owner-controlled opening, isolation, and authorized
 real migration evidence. Do not use this implementation to open the final-test
 entry point outside owner-controlled acceptance.
+
+## Offline Linux owner-boundary candidate
+
+`owner_boundary` is a helper for later owner-service deployment planning. It
+requires different non-root integer UIDs for the owner service and training
+process. Its authorizer reads PID/UID/GID using Linux `SO_PEERCRED` from an
+already-connected `AF_UNIX` stream handle. Only a kernel-reported UID 0 peer
+can represent owner approval; the requester's value must equal the canonical
+identity derived from those credentials, and a nonblank reason is required.
+The service process's effective UID must match its configured service UID.
+No environment variable or caller-supplied owner name grants access.
+
+These are the credentials captured when the connection was established, not
+per-message proof of the peer's current privileges. A later deployment must
+keep owner-approved connection handles under trusted control, never hand them
+to training code, and account for its Linux user-namespace configuration.
+
+The adapter implements the existing `OwnerAuthorizer` method shape and does
+not alter any opening function. Supplying a fake Python object or changing
+arguments inside the trusted service process is not authentication against
+malicious code in that process. This helper creates, binds, connects, or accepts
+no sockets and does not isolate the process or protect files on its own.
+
+Protected-layout validation consumes immutable, supplied `PathMetadata`
+descriptors only. It checks root ownership and non-writable code/config files,
+root-owned non-group/world-writable ancestor directories, and service-owned
+owner-only data, audit, and runtime directories; it rejects missing ancestors,
+symlinks, unsafe modes, wrong owners, and wrong file types. These checks validate
+the supplied evidence. They are not race-proof enforcement, filesystem
+provisioning, or proof of live ownership, and this code never stats or opens a
+path. Deployment must safely derive metadata and enforce protected paths before
+loading service code. The protected root and vault have not been inspected.
+
+This is an architecture candidate only. Ticket 04 remains **INCOMPLETE**;
+tickets 05 and 17 remain **BLOCKED**. No real isolation or authenticated
+service is claimed. Owner acceptance prerequisites remain separate: deploy the
+service under the dedicated identity, keep training unable to read protected
+paths, establish a safely enforced IPC endpoint and layout, then review and
+accept the deployment before any authorized owner operation.

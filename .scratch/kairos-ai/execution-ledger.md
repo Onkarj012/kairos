@@ -1,5 +1,35 @@
 # Kairos AI execution ledger
 
+PR18 portability fix, 2026-11-16 IST: Greptile P2 thread
+PRRT_kwDOVQuzD863xr7X correctly identified an unpatched requester assertion and
+missing SO_PEERCRED on non-Linux test hosts. Peer-test setup now mocks Linux
+and the socket constant for the complete test lifecycle. A regression reruns
+both peer cases under simulated darwin with SO_PEERCRED absent, requires no
+errors/failures/skips, and checks constant cleanup. Before the setup fix it
+failed with both reported errors. Guarded four-file selection passes44tests
+and45subtests, zero safety refusals. Actual macOS execution is unverified.
+Only tests and explanatory metadata change; production and decisions unchanged.
+Independent exact-head recheck and remote acceptance pending;04incomplete,
+05/17blocked14incompletepaper15blocked. No real socket/opening/deployment.
+
+Owner-boundary candidate checkpoint, 2026-11-16 IST: worker9c5d466 on exact
+base00e3e89 adds only owner_boundary.py, its synthetic test, README and ticket04
+evidence. Coordinator inspected source/tests and removed an unused duplicate
+authorizer protocol. Distinct non-root service/training UID checks, root-peer
+SO_PEERCRED authorization and supplied layout metadata checks are helper-only.
+Documentation now states connect-time credentials and trusted handle/user-
+namespace assumptions. Guarded four-file selection passed43tests+45subtests,
+zero safety refusals, with the existing unchanged harness and read-only installed
+dependencies. No real sockets, protected paths or opening functions were used.
+Independent exact-head review pending; no push/PR.04incomplete05/17blocked,
+14incompletepaper15blocked. No daemon/listener, provisioning or migration.
+
+PR17 merged checkpoint, 2026-11-16 IST: squash00e3e89004da4be5f968ae0129bc6d36b9b178c2
+is the base of this branch. Finalhead08e3afe had independent Sol high approval,
+39tests+22subtests, Greptile5/5SUCCESS, CodeRabbitSKIPPED and resolvedthreads.
+SHA-guarded squash merge confirmed; watch removed and worktrees retained.
+This accepts code only, not owner filesystem opening or OS/IPC enforcement.
+
 PR 17 review follow-up, 2026-11-16 IST: exact `9bac62b` received independent
 Sol high approval, Greptile SUCCESS with 4/5 confidence, and CodeRabbit SKIPPED.
 Greptile's P2 unread-snapshot finding is valid. The coordinator added an

@@ -65,3 +65,49 @@ Synthetic helper and policy tests do not call either final-test opening function
 Architecture choices for coordinator decisions log: bind a canonical ordered descriptor (relative identifier, kind, manifest digest, payload digest) into the one-per-style audit; reject implicit enumeration and require explicit IDs; retain all verified private snapshots until the complete collection validates, with a bounded 8-GiB aggregate cap. Rejected per-pack authorizations because ticket 30 requires one opening per style, and rejected path-only selections because later enumeration or replacement could change the collection after authorization. Source: implementation sub-agent thread, 2026-11-16 IST. Status: bounded implementation added; owner acceptance and OS/IPC isolation pending.
 
 Validation evidence: `tests/test_owner_session.py` is restricted to synthetic descriptor validation and policy-only audit behavior. Static search confirmed none of the selected tests call `open_final_test_rows` or `open_final_test_session`. The guarded command was `CHECK_TMP="$(mktemp -d /tmp/kairos04-multipack-check.XXXXXX)"; TMPDIR="$CHECK_TMP" PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTEST_ADDOPTS= /usr/bin/python3 -I -S -B /tmp/kairos-safe-focused-check.py "$PWD" tests/test_owner_session.py tests/test_blind_vault.py tests/test_compact_packs.py`; result: **34 passed, 14 subtests passed**, safety refusals `[]`, local import audit contained 10 paths. Environment showed no inherited `PYTEST_ADDOPTS`; `pyproject.toml` config has no plugins or addopts; the harness rejected any conftest or startup hooks in the audited paths. The filesystem opening integration remains **UNVERIFIED** by design.
+
+## Offline owner-boundary architecture candidate (2026-11-16 IST)
+
+PR18 portability follow-up, 2026-11-16 IST: accepted Greptile P2 thread
+`PRRT_kwDOVQuzD863xr7X`. Linux-specific peer-test setup now patches both the
+platform and SO_PEERCRED for the entire test, including requester lookup.
+A regression executes both peer cases under simulated darwin with the socket
+constant absent, requiring no failures, errors or skips and restored mocks.
+It reproduced both prior errors before the setup fix. The guarded four-file
+selection now passes **44 tests and 45 subtests**, zero safety refusals.
+This is simulated portability evidence, not an actual macOS test run.
+Production helper code is unchanged; no real sockets, protected paths, opening
+entry points or deployments were used. Independent fix review pending.
+
+Worker implementation9c5d466 and coordinator inspection used only the four
+permitted implementation/test/doc paths; coordinator ledger and decisions are
+added separately for review. After auditing the focused imports, package
+initializers, harness, startup and pytest configuration, the exact authorized
+four-file guarded selection passed **43 tests and 45 subtests** with zero safety
+refusals. The existing harness was unchanged. The coordinator removed an unused
+duplicate protocol and documented that credentials are captured at connection
+establishment, not fresh per-message privilege attestations. Independent
+exact-head review remains pending. No real socket, protected path, vault or
+opening entry point was used, including no monkeypatched opening calls.
+
+Added `kairos_data.owner_boundary`, a helper-only Linux candidate for a later
+dedicated owner service. It validates distinct non-root integer service and
+training UIDs, extracts peer PID/UID/GID from an already-connected AF_UNIX
+stream using `SO_PEERCRED`, and adapts the existing `OwnerAuthorizer` protocol.
+Only root UID 0 peer credentials can represent owner approval. The requester's
+identity must match the canonical kernel-peer identity, the reason must be
+nonblank, and the process effective UID must match the configured service UID.
+Fake Python objects and same-process code are not an authentication boundary.
+
+The protected-layout helper validates immutable supplied stat metadata for
+root-owned non-writable code/config and root-controlled ancestors, plus
+service-owned private data, audit, and runtime directories. It performs no
+filesystem access and its results are not race-proof enforcement, provisioning,
+or proof of live ownership. Later deployment must safely derive and enforce the
+protected layout before loading service code. No protected root or vault was
+inspected; no listener or socket lifecycle code was added.
+
+Ticket 04 remains **INCOMPLETE**; tickets 05 and 17 remain **BLOCKED**. Ticket
+14 remains **INCOMPLETE** and paper ticket 15 remains **BLOCKED**. This is an
+architecture candidate only, not a claim of real OS isolation or an
+authenticated deployed service.
