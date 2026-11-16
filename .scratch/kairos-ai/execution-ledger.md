@@ -1,5 +1,37 @@
 # Kairos AI execution ledger
 
+PR 17 review follow-up, 2026-11-16 IST: exact `9bac62b` received independent
+Sol high approval, Greptile SUCCESS with 4/5 confidence, and CodeRabbit SKIPPED.
+Greptile's P2 unread-snapshot finding is valid. The coordinator added an
+explicitly closable/context-managed session and idempotently closable row
+iterators, preserving the single-pack return tuple. Synthetic empty-memory
+stream tests cover partial and unread cleanup, caller exceptions, exhaustion,
+iteration failure, and cleanup continuation after a close error. Guarded
+three-file validation: 39 tests and 22 subtests passed, zero safety refusals,
+ten audited local files. Neither opening function was invoked. Fresh exact-head
+review and remote acceptance of this fix remain pending. Ticket 04 remains
+incomplete; 05/17 and paper 15 remain blocked; 14 remains incomplete.
+
+Multi-pack checkpoint, 2026-11-16 IST: PR16 merged as
+`c9462bf77ae67c789d99897f3ecbf56eec330897` after exactfda065e Sol high approval,
+Greptile5/5/SUCCESS, CodeRabbitSKIPPED and resolvedthread; watch removed.
+Compact implementation evidence accepted, not real capacity/migration evidence.
+The next04worker
+`t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3Ae296ab3f-15d2-43a7-9614-a078802328c5%3Adelegate-task%3Akairos-ai-ticket04-multipack-20261116-01`
+committed8446af0 from exactc9462bf in its T3isolatedcheckout. Five-path scope
+adds pure frozen-selection metadata and a one-audit multi-pack owner contract,
+without changing storage/ordinary readers/init. Coordinator inspected sources,
+audited10localimports and startup, added request-hash sensitivity for every
+selection field/order plus exact audit-selection equality. Guarded three-file
+selection:35passed+19subtests, zero safety refusals. No opening entry point was
+invoked, not even with stubs; owner filesystem integration remains UNVERIFIED.
+Explicit selection limits are implementation bounds, not actual corpus coverage
+or capacity proof. Legacy single-pack callers now need matching frozen metadata.
+Fresh exact-head review pending; no push/PR. 04incomplete and05/17blocked until
+accepted owner-controlled isolation/opening and actualmigration/count/checksum
+evidence. No OS provisioning, service/IPC deployment, realdata, Mac, training or
+owner-root writes;14incomplete,paper15blocked.
+
 PR16 schema-coverage checkpoint, 2026-11-16 IST: independent Sol high approved
 d750e20 and the branch was published as https://github.com/Onkarj012/kairos/pull/16.
 Greptile SUCCESS at4/5 correctly found that the malformed-schema regression
