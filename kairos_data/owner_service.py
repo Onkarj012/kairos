@@ -264,7 +264,6 @@ class OpenedPackRows:
 
 
 def _resolve_selected_pack(root: Path, identifier: str) -> Path:
-    # Identifier syntax was validated before the audit. Never enumerate the root.
     candidate = root.joinpath(*identifier.split("/"))
     cursor = candidate
     while cursor != root and root in cursor.parents:
@@ -334,7 +333,6 @@ def open_final_test_session(
             OpenedPackRows(expected.identifier, manifest.kind, _read_snapshot_rows(snapshot, manifest))
             for expected, manifest, snapshot in snapshots
         )
-        # Each lazy row iterator owns the snapshot until exhaustion; close on exhaustion.
         return audit, tuple(
             OpenedPackRows(item.identifier, item.kind, _closing_rows(item.rows, snapshots[index][2]))
             for index, item in enumerate(opened)

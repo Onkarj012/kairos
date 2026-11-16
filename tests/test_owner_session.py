@@ -3,6 +3,7 @@
 These tests must not call either final-test opening entry point or create packs.
 """
 
+from dataclasses import replace
 import json
 from pathlib import Path
 import tempfile
@@ -15,6 +16,7 @@ from kairos_data.owner_session import (
 )
 from kairos_data.owner_service import (
     OpeningRequest,
+    _request_hash,
     authorize_and_audit,
     model_fingerprint,
     validate_opening_request,
@@ -94,12 +96,28 @@ class OwnerSessionMetadataTests(unittest.TestCase):
             )
             record = json.loads(audit_path.read_text(encoding="utf-8"))
             self.assertEqual(record["selection_sha256"], audit.selection_sha256)
+            self.assertEqual(record["pack_selection"], selection_value(freeze_pack_selection(selected)))
             self.assertEqual(record["pack_selection"][1]["kind"], "minute")
             self.assertEqual(len(record["pack_selection"]), 2)
             with self.assertRaisesRegex(AuthorizationError, "already has"):
                 authorize_and_audit(
                     opening, authorizer=_AllowOwner(), audit_log=audit_path
                 )
+
+    def test_request_hash_binds_every_selection_field_and_order(self):
+        selected = (pack("daily/one"), pack("minute/one", PackKind.MINUTE))
+        original = request(selected)
+        variants = (
+            tuple(reversed(selected)),
+            (replace(selected[0], identifier="daily/two"), selected[1]),
+            (replace(selected[0], kind=PackKind.MINUTE), selected[1]),
+            (replace(selected[0], manifest_sha256="c" * 64), selected[1]),
+            (replace(selected[0], content_sha256="d" * 64), selected[1]),
+        )
+        original_hash = _request_hash(original)
+        for selection in variants:
+            with self.subTest(selection=selection):
+                self.assertNotEqual(original_hash, _request_hash(replace(original, pack_selection=selection)))
 
     def test_denial_writes_no_audit(self):
         with tempfile.TemporaryDirectory() as directory:
