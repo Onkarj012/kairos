@@ -296,37 +296,48 @@ def _verify(
     if rows_path.is_symlink() or not rows_path.is_file():
         raise ValueError("pack rows must be a regular file")
 
+    with rows_path.open("rb") as source:
+        _verify_stream(source, manifest, snapshot=snapshot)
+    return manifest, rows_path
+
+
+MAX_JSONL_ROW_BYTES = 1024 * 1024
+
+
+def _verify_stream(source: BinaryIO, manifest: PackManifest, *, snapshot: BinaryIO | None = None) -> None:
+    """Validate an already pinned payload, retaining the same verified bytes."""
     digest = hashlib.sha256()
     count = 0
     first: date | None = None
     last: date | None = None
     live_date: date | None = None
-    with rows_path.open("rb") as source:
-        if manifest.encoding == "jsonl":
-            for raw in source:
-                digest.update(raw)
-                if snapshot is not None:
-                    snapshot.write(raw)
-                try:
-                    row = json.loads(raw)
-                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                    raise ValueError("pack contains invalid JSONL") from exc
-                if not isinstance(row, dict):
-                    raise ValueError("pack rows must be JSON objects")
-                row_date = _validate_partition_row(row, manifest.kind, manifest.partition)
-                if manifest.partition == "live":
-                    if live_date is not None and row_date != live_date:
-                        raise ValueError("each live pack must contain exactly one daily session")
-                    live_date = row_date
-                first = row_date if first is None else min(first, row_date)
-                last = row_date if last is None else max(last, row_date)
-                count += 1
-        else:
-            while raw := source.read(1024 * 1024):
-                digest.update(raw)
-                if snapshot is not None:
-                    snapshot.write(raw)
-            count, first, last, live_date = _scan_parquet(source if snapshot is None else snapshot, manifest)
+    if manifest.encoding == "jsonl":
+        while raw := source.readline(MAX_JSONL_ROW_BYTES + 1):
+            if len(raw) > MAX_JSONL_ROW_BYTES:
+                raise ValueError("JSONL row exceeds the supported byte limit")
+            digest.update(raw)
+            if snapshot is not None:
+                snapshot.write(raw)
+            try:
+                row = json.loads(raw)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError("pack contains invalid JSONL") from exc
+            if not isinstance(row, dict):
+                raise ValueError("pack rows must be JSON objects")
+            row_date = _validate_partition_row(row, manifest.kind, manifest.partition)
+            if manifest.partition == "live":
+                if live_date is not None and row_date != live_date:
+                    raise ValueError("each live pack must contain exactly one daily session")
+                live_date = row_date
+            first = row_date if first is None else min(first, row_date)
+            last = row_date if last is None else max(last, row_date)
+            count += 1
+    else:
+        while raw := source.read(1024 * 1024):
+            digest.update(raw)
+            if snapshot is not None:
+                snapshot.write(raw)
+        count, first, last, live_date = _scan_parquet(source if snapshot is None else snapshot, manifest)
     if (count, digest.hexdigest(), first, last) != (
         manifest.rows,
         manifest.sha256,
@@ -336,7 +347,6 @@ def _verify(
         raise ValueError("pack row count, date range, or checksum does not match manifest")
     if manifest.encoding == "parquet" and count and live_date is None and manifest.partition == "live":
         raise ValueError("empty live pack")
-    return manifest, rows_path
 
 
 def _read_pack_rows(
@@ -437,6 +447,8 @@ def write_pack(
                     if partition == "live" and first is not None and row_date != first:
                         raise ValueError("each live pack must contain exactly one daily session")
                     raw = _json_line(row)
+                    if len(raw) > MAX_JSONL_ROW_BYTES:
+                        raise ValueError("JSONL row exceeds the supported byte limit")
                     output.write(raw)
                     digest.update(raw)
                     first = row_date if first is None else min(first, row_date)

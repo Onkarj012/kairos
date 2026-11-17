@@ -68,6 +68,11 @@ Validation evidence: `tests/test_owner_session.py` is restricted to synthetic de
 
 ## Offline owner-boundary architecture candidate (2026-11-16 IST)
 
+Reconciled 2026-11-17 IST: PR18 is merged at f444b2d, final head0d302f0
+independently approved with 44 tests/45 subtests, Greptile5/5SUCCESS,
+CodeRabbitSKIPPED and resolved threads. Pending-review notes below are
+historical. They do not prove actual isolation or authorize opening.
+
 PR18 portability follow-up, 2026-11-16 IST: accepted Greptile P2 thread
 `PRRT_kwDOVQuzD863xr7X`. Linux-specific peer-test setup now patches both the
 platform and SO_PEERCRED for the entire test, including requester lookup.
@@ -111,3 +116,29 @@ Ticket 04 remains **INCOMPLETE**; tickets 05 and 17 remain **BLOCKED**. Ticket
 14 remains **INCOMPLETE** and paper ticket 15 remains **BLOCKED**. This is an
 architecture candidate only, not a claim of real OS isolation or an
 authenticated deployed service.
+
+## Dedicated service software continuation (2026-11-17 IST)
+
+The coherent candidate now includes a protected bootstrap/release layout,
+dedicated-account lifecycle, root-authenticated bounded local protocol,
+per-fragment credentials, descriptor-pinned pack/audit access, owner-only
+idempotent install/rollback plans and an inactive hardened unit. Final testing
+is disabled. The setup tool neither provisions accounts nor fetches dependencies
+nor starts/enables/reloads the unit. Rollback stops/disables and verifies the
+managed unit before removing it, preserving all data, identities and audits.
+
+`docs/agents/owner-service.md` is the owner checklist. Safe verification uses
+pre-2025 synthetic packs, in-memory dependency canaries, unprivileged socket
+pairs and synthetic handlers only. Neither `open_final_test_rows` nor
+`open_final_test_session` is invoked, including mocks/extraction/refusal paths.
+The real opening wiring is inspected statically. This remains software
+acceptance, not deployed security or ticket completion. All original acceptance
+checkboxes stay unchecked until separately accepted end-to-end evidence.
+
+Pending owner work: dedicated identities/permissions and trusted runtime;
+explicit install/activation and synthetic cross-identity denial/restart evidence;
+physical crash/restore and capacity evidence; separately authorized real
+partition migration counts/checksums and ticket04 acceptance. No blind content
+is needed for isolation acceptance. Final blind testing is later ticket30.
+Ticket04 **INCOMPLETE**, tickets05/17 **BLOCKED**; no training, operational or
+model-performance claims.

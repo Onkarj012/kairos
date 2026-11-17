@@ -22,12 +22,13 @@ secrets.json
 /data/
 /runs/
 
-# Docs are private by default; allow only the two shared agent guides.
+# Docs are private by default; allow shared agent guides and owner runbook.
 /docs/*
 !/docs/agents/
 /docs/agents/*
 !/docs/agents/issue-tracker.md
 !/docs/agents/triage-labels.md
+!/docs/agents/owner-service.md
 
 # Scratch plans are private by default; allow only Kairos AI planning files.
 /.scratch/*
