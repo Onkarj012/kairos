@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from kairos_data import PackKind, read_training_rows, write_pack
 from kairos_data.policy import DateBoundaryError
-from kairos_data.storage import read_verified_pack
+from kairos_data.storage import MAX_JSONL_ROW_BYTES, read_verified_pack
 
 
 def row(day: str, close: float = 100.0) -> dict[str, object]:
@@ -24,6 +24,48 @@ class CompactPackTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+
+    def test_jsonl_writer_boundary_roundtrips_and_retries(self):
+        for character in ("x", "é"):
+            for size in (MAX_JSONL_ROW_BYTES - 1, MAX_JSONL_ROW_BYTES):
+                with self.subTest(character=character, size=size):
+                    record = {**row("2024-12-31"), "text": ""}
+                    overhead = len((json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode())
+                    width = len(json.dumps(character)[1:-1].encode())
+                    repeats, padding = divmod(size - overhead, width)
+                    record["text"] = character * repeats + "x" * padding
+                    pack = self.root / "boundary"
+                    manifest = write_pack(pack, [record], kind="daily", partition="pre2025")
+                    self.assertEqual((pack / "rows.jsonl").stat().st_size, size)
+                    self.assertEqual(list(read_verified_pack(pack, expected_partition="pre2025")), [record])
+                    self.assertEqual(write_pack(pack, [record], kind="daily", partition="pre2025"), manifest)
+                    for path in pack.iterdir():
+                        path.unlink()
+                    pack.rmdir()
+
+    def test_oversized_jsonl_write_cleans_staging_and_preserves_existing_pack(self):
+        for existing in (False, True):
+            for character in ("x", "é"):
+                with self.subTest(existing=existing, character=character):
+                    pack = self.root / "oversized"
+                    original = row("2024-12-31")
+                    if existing:
+                        write_pack(pack, [original], kind="daily", partition="pre2025")
+                    record = {**original, "text": ""}
+                    overhead = len((json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode())
+                    width = len(json.dumps(character)[1:-1].encode())
+                    repeats, padding = divmod(MAX_JSONL_ROW_BYTES + 1 - overhead, width)
+                    record["text"] = character * repeats + "x" * padding
+                    for _ in range(2):
+                        with self.assertRaisesRegex(ValueError, "JSONL row exceeds the supported byte limit"):
+                            write_pack(pack, [original, record], kind="daily", partition="pre2025")
+                        self.assertEqual(list(self.root.iterdir()), [pack] if existing else [])
+                        if existing:
+                            self.assertEqual(list(read_verified_pack(pack, expected_partition="pre2025")), [original])
+                    if existing:
+                        for path in pack.iterdir():
+                            path.unlink()
+                        pack.rmdir()
 
     def test_legacy_manifest_without_encoding_remains_jsonl(self):
         pack = self.root / "legacy"

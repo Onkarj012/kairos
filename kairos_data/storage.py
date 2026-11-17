@@ -447,6 +447,8 @@ def write_pack(
                     if partition == "live" and first is not None and row_date != first:
                         raise ValueError("each live pack must contain exactly one daily session")
                     raw = _json_line(row)
+                    if len(raw) > MAX_JSONL_ROW_BYTES:
+                        raise ValueError("JSONL row exceeds the supported byte limit")
                     output.write(raw)
                     digest.update(raw)
                     first = row_date if first is None else min(first, row_date)

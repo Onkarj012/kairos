@@ -49,7 +49,9 @@ to recover from a failure; the owner must review it.
 Requests: 256 KiB, 256 packs, identifiers at most 1,024 UTF-8 bytes, five seconds
 including the required write-side EOF. Responses: 2 MiB per frame and 9 GiB
 per connection, with a 900-second total session deadline (also armed during
-verification). JSONL source rows are at most 1 MiB. Responses are flat JSON
+verification). JSONL source rows are at most 1 MiB of serialized bytes,
+including the terminating newline; writers reject larger rows before publishing
+and readers enforce the same limit. Responses are flat JSON
 records, not a model evaluator or scores.
 
 Retained verified snapshots: at most 8 GiB total and an aggregate 8 MiB spool

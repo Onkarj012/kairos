@@ -58,6 +58,21 @@ were inspected or activated. Read-only identity checks confirm owner
 Onkarj012/ADMIN. Disk remains approximately 6.8 GiB free; no installs or large
 copies were made. Final exact-head test/review evidence is recorded separately.
 
+## PR19 writer-limit correction, 2026-11-17 IST
+
+Initial head `61a6746ddfe810cf0c65b055ad452cca7e4edd14` received independent
+gpt-6.1-sol HIGH APPROVE with independently reproduced 86 tests and 85 subtests,
+zero safety refusals. PR19 Greptile then passed its check but scored 4/5 and
+correctly identified that the JSONL writer could publish rows above the reader's
+1 MiB byte limit. The writer now enforces the identical serialized-byte bound
+before writing/publishing. Synthetic pre-2025 boundary tests cover limit-1,
+limit, limit+1, escaped Unicode, identical retries, staging cleanup and preservation
+of an existing pack. The unchanged guarded seven-file selection passes 88 tests
+and 93 subtests, zero safety refusals. Changed-head independent recheck and
+current-head remote approval remain required before publication/merge. No
+opening entry point, protected path, provisioning or activation was exercised;
+04 remains incomplete and 05/17 blocked.
+
 ## Historical checkpoints
 
 PR18 portability fix, 2026-11-16 IST: Greptile P2 thread
