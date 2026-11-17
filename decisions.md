@@ -12,11 +12,23 @@ Entry format:
 
 ---
 
+## 2026-11-17 — Complete ticket 04 service software while leaving activation and isolation acceptance to the owner
+- rejected: another helper-only milestone, same-user Python secrecy, mutable checkout/dependency imports, trainer-supplied owner identity, per-pack authorizations and using a final test to verify installation
+- why: the owner requested a coherent activation-ready deliverable. Use an immutable root-managed release/config and optional sealed dependency tree, a dedicated existing non-root service identity, root-only AF_UNIX transport with connection and per-fragment kernel credentials, a single locked lifecycle, descriptor-pinned no-follow files, bounded verified snapshots and durable one-style authorization before exposure. Install/rollback tools require exact root-sealed approved plans and never activate. Canary acceptance touches only a fixed benign synthetic file; real isolation, migration, capacity and owner acceptance remain pending. Final testing is disabled until separately authorized ticket 30; 04 remains incomplete and 05/17 blocked.
+- source: owner continuation in T3 thread `<t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/mcp:launch:08cd039cf54ebe5ef6cf0972ee73237c1fa7086c569f5dc77a479bc4e972f5c4>`; durable handoff `continuation-handoff-20261117.md` from the prior coordinator
+- status: active software design; supersedes helper-only implementation scope, not owner-controlled activation or acceptance gates
+
+## 2026-11-17 — Retain the original safe harness unchanged and exercise real local credentials through unprivileged socket pairs
+- rejected: silently allowing listener bind/connect events through the existing guard, invoking either opening function with mocks, or using blind fixtures to test transport
+- why: socket pairs exercise framing, fragmentation, SCM_CREDENTIALS, descriptor refusal and deadlines without any listener activation or network connection. Pure synthetic handlers test transport dispatch and cleanup; pre-2025 temporary packs test descriptor-pinned storage. Production opening wiring and install/rollback ordering are inspected statically, never executed. Deployed listeners, cross-identity denials and crash behavior still require separate owner acceptance.
+- source: this owner-service continuation; `.scratch/kairos-ai/safe-validation.md`; original harness SHA256 1d6c48051d01417b385ca0233dc413f31333a096f4a513d0cd4f284c4c49a0e3
+- status: active validation boundary
+
 ## 2026-11-16 — Prepare Linux owner-boundary helpers with root-peer approval and supplied layout metadata checks
 - rejected: trainer-user requests, requester strings or environment flags as owner identity; provisioning identities/services or inspecting protected paths during an offline code task
 - why: service and training need distinct non-root OS identities. The adapter checks the service effective UID, derives connection-time peer credentials through Linux SO_PEERCRED and accepts only a matching canonical root-peer requester with a nonblank reason. Pure metadata validation checks root-controlled code/config and ancestors plus private service directories without filesystem access. Fake handles and metadata tests cannot prove kernel identity, deployed isolation, race-free path enforcement or namespace policy. A later separately authorized deployment must enforce those conditions before any owner operation.
 - source: owner continuation in this coordinator thread after PR17 merge00e3e89; implementation `t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A3a0f4443-ed8c-4db8-b4c7-3fa775dc905c%3Adelegate-task%3Akairos-ai-ticket04-owner-boundary-20261116-01`
-- status: active bounded helper scope, independent review pending; no provisioning/opening authorization;04incomplete05/17blocked
+- status: helper code accepted in PR18 squash f444b2d; helper-only scope superseded by 2026-11-17 service-software decision; no provisioning/opening authorization;04incomplete05/17blocked
 
 ## 2026-11-16 — Multi-pack openings return an explicitly closable session instead of an unowned tuple of iterators
 - rejected: relying on iterator exhaustion or garbage collection to release unread snapshots

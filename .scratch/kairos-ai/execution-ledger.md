@@ -1,5 +1,65 @@
 # Kairos AI execution ledger
 
+## Coordinator reconciliation, 2026-11-17 IST
+
+This continuation starts from verified clean main
+`f444b2de312431bc119427fabae29a920e716011`. PRs 9 through 18 are merged;
+the older pending-review entries below are historical checkpoints, not live
+blockers. PR18's final `0d302f0f5ea0f268dbe0f312e9ff055197d822c4` had independent
+Sol HIGH approval, 44 tests and 45 subtests, zero safety refusals, Greptile
+5/5 SUCCESS, CodeRabbit SKIPPED and resolved threads; its watch is off.
+This reconciles the prior coordinator's durable uncommitted history without
+copying stale files over current main. That checkout and the owner root are
+untouched. All existing worktrees remain retained.
+
+Accepted CODE scopes: 01/02/03/08. Partial: 04/14. Blocked: 05/06/07/09/10/11/12/
+13/15/16/17/18/19/20/21/22/23/24/25/26/27/28/29/31 (24 tickets).
+Owner-controlled: 30/32/33/34. Ticket 04 still blocks 05 and 17. No operational,
+training, performance, paper-duration, real-data or deployment claim is added.
+
+## Service-software candidate, 2026-11-17 IST
+
+The new coordinator owns core lifecycle, protocol, descriptor-pinned storage,
+bootstrap/client and metadata. The bounded tooling worker
+<t3-thread://v2/1585e0e6-cd5d-4301-ae07-5248fda631d2/thread:delegated-task:command%3Amcp%3A7138691d-2e9d-4fb8-b785-bf4acd48594a%3Adelegate-task%3A52dfe84a-c7d0-4a3c-9ae8-807b57745874>
+adds only owner setup/rollback tooling, inactive unit and synthetic plan tests;
+the coordinator audits and integrates them. See `docs/agents/owner-service.md`
+for the exact activation, canary-denial, rollback and remaining-evidence list.
+
+The root-only protocol supplies no training/live endpoint. Final testing is
+disabled in generated configuration. All selected snapshots must verify after
+one durable style audit and before exposure. Code/config/dependencies cannot
+come from a mutable training checkout at runtime. Production paths are pinned
+with no-follow opens, private owners/modes and singly linked regular files.
+Management applies only exact owner-approved root-sealed plans; no activation
+is implicit. No production provisioning, installation, service activation,
+opening entry point, blind fixture/content, actual migration, Mac transfer,
+training, broker or account call is performed in this continuation.
+
+Before review, the original guarded six-file selection passed 66 tests and
+62 subtests with zero safety refusals. This is a historical candidate checkpoint;
+subsequent combined verification and exact-head review/publication determine
+software acceptance, not this paragraph. Harness SHA256 remains
+`1d6c48051d01417b385ca0233dc413f31333a096f4a513d0cd4f284c4c49a0e3`.
+Kernel framing tests use temporary unprivileged socket pairs, not listeners or
+either prohibited opening function. Owner filesystem opening wiring and
+provisioning are static-review-only; fake lifecycle handles are not evidence
+of deployed isolation. Ticket 04 stays incomplete and 05/17 blocked until
+separately authorized actual isolation/migration evidence is accepted.
+
+Combined pre-publication verification, 2026-11-17 IST: the seven explicit
+audited files (the prior four plus owner_runtime, owner_protocol and
+owner_service_tooling) passed 86 tests and 85 subtests with zero refusals,
+including the bootstrap-predicate regression. Shell syntax and
+`git diff --check` passed. systemd unit verification passed against a completely
+synthetic private alternate root, generators disabled, with a copied benign
+executable and synthetic target units; no production service paths or manager
+were inspected or activated. Read-only identity checks confirm owner
+Onkarj012/ADMIN. Disk remains approximately 6.8 GiB free; no installs or large
+copies were made. Final exact-head test/review evidence is recorded separately.
+
+## Historical checkpoints
+
 PR18 portability fix, 2026-11-16 IST: Greptile P2 thread
 PRRT_kwDOVQuzD863xr7X correctly identified an unpatched requester assertion and
 missing SO_PEERCRED on non-Linux test hosts. Peer-test setup now mocks Linux

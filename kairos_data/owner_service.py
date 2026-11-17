@@ -17,7 +17,6 @@ import json
 import os
 from pathlib import Path
 import re
-import stat
 import tempfile
 from typing import Any, BinaryIO, Iterator, Mapping, Protocol
 
@@ -29,7 +28,8 @@ from .owner_session import (
     validate_pack_identifier,
 )
 from .policy import AuthorizationError
-from .storage import PackKind, PackManifest, _manifest_bytes, _verify
+from .protected_io import check_regular, open_absolute_directory, verify_selected_pack
+from .storage import PackKind, PackManifest
 
 _FINGERPRINT = re.compile(r"^[0-9a-f]{64}$")
 _STYLE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
@@ -118,11 +118,42 @@ def _request_hash(request: OpeningRequest) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _validated_audit_style(record: object) -> str:
+    fields = {
+        "requested_at", "frozen_style", "model_fingerprint", "requester", "reason",
+        "pack_selection", "selection_sha256", "request_sha256",
+    }
+    if not isinstance(record, dict) or set(record) != fields:
+        raise ValueError("audit log has a malformed record")
+    if any(not isinstance(record[name], str) for name in fields - {"pack_selection"}):
+        raise ValueError("audit log metadata must be text")
+    selected = record["pack_selection"]
+    if not isinstance(selected, list) or len(selected) > 256:
+        raise ValueError("audit log has a malformed selection")
+    packs = []
+    for entry in selected:
+        if not isinstance(entry, dict) or set(entry) != {"identifier", "kind", "manifest_sha256", "content_sha256"}:
+            raise ValueError("audit log has a malformed pack identity")
+        packs.append(PackExpectation(
+            entry["identifier"], PackKind(entry["kind"]), entry["manifest_sha256"], entry["content_sha256"]
+        ))
+    request = OpeningRequest(
+        record["requested_at"], record["frozen_style"], record["model_fingerprint"],
+        record["requester"], record["reason"], tuple(packs),
+    )
+    validate_opening_request(request)
+    selection = FrozenPackSelection(tuple(packs))
+    if record["selection_sha256"] != selection.sha256 or record["request_sha256"] != _request_hash(request):
+        raise ValueError("audit log record digest does not match its metadata")
+    return request.frozen_style
+
+
 def authorize_and_audit(
     request: OpeningRequest,
     *,
     authorizer: OwnerAuthorizer,
     audit_log: str | Path,
+    audit_directory_fd: int | None = None,
 ) -> OpeningAudit:
     """Authorize and durably record one opening request per frozen style.
 
@@ -137,34 +168,38 @@ def authorize_and_audit(
     if not authorizer.authorize(request.requester, request.reason):
         raise AuthorizationError("owner service denied final-test opening")
     path = Path(audit_log)
-    if path.is_symlink():
+    if audit_directory_fd is not None and (path.name != str(path) or path.name in {"", ".", ".."}):
+        raise ValueError("descriptor-relative audit requires one filename")
+    if audit_directory_fd is None and path.is_symlink():
         raise ValueError("audit log cannot be a symlink")
-    if not path.parent.is_dir():
+    if audit_directory_fd is None and not path.parent.is_dir():
         raise FileNotFoundError("audit directory must be durably provisioned before authorization")
-    flags = os.O_CREAT | os.O_APPEND | os.O_RDWR
+    flags = os.O_CREAT | os.O_APPEND | os.O_RDWR | os.O_NONBLOCK | os.O_CLOEXEC
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    fd = os.open(path, flags, 0o600)
+    fd = os.open(path, flags, 0o600, dir_fd=audit_directory_fd)
     try:
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
-            raise ValueError("audit log must be a regular file")
+        check_regular(os.fstat(fd), owner=os.geteuid(), immutable=False)
         with os.fdopen(fd, "a", encoding="utf-8", closefd=False) as log:
             fcntl.flock(fd, fcntl.LOCK_EX)
             try:
                 os.fchmod(fd, 0o600)
+                if os.fstat(fd).st_size > 8 * 1024 * 1024:
+                    raise ValueError("audit log exceeds its supported size; owner maintenance required")
                 existing_styles: set[str] = set()
                 with os.fdopen(os.dup(fd), "r", encoding="utf-8") as reader:
                     reader.seek(0)
-                    for line in reader:
+                    while line := reader.readline(256 * 1024 + 1):
+                        if len(line) > 256 * 1024 or not line.endswith("\n"):
+                            raise ValueError("audit log has an oversized or incomplete record")
                         try:
                             record = json.loads(line)
                         except json.JSONDecodeError as exc:
                             raise ValueError("audit log has a malformed record") from exc
-                        if not isinstance(record, dict):
-                            raise ValueError("audit log has a malformed record")
-                        style = record.get("frozen_style")
-                        if isinstance(style, str):
-                            existing_styles.add(style)
+                        style = _validated_audit_style(record)
+                        if style in existing_styles:
+                            raise ValueError("audit log contains duplicate style authorizations")
+                        existing_styles.add(style)
                 if request.frozen_style in existing_styles:
                     raise AuthorizationError("this frozen style already has a final-test opening")
                 audit = OpeningAudit(
@@ -183,10 +218,16 @@ def authorize_and_audit(
                     ).hexdigest(),
                     request_sha256=_request_hash(request),
                 )
-                log.write(_audit_line(audit))
+                line = _audit_line(audit)
+                if len(line.encode("utf-8")) > 256 * 1024:
+                    raise ValueError("audit record exceeds its supported size")
+                log.write(line)
                 log.flush()
                 os.fsync(fd)
-                parent_fd = os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+                parent_fd = (
+                    os.dup(audit_directory_fd) if audit_directory_fd is not None
+                    else os.open(path.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+                )
                 try:
                     os.fsync(parent_fd)
                 finally:
@@ -313,27 +354,15 @@ class OpenedSession:
         self.close()
 
 
-def _resolve_selected_pack(root: Path, identifier: str) -> Path:
-    candidate = root.joinpath(*identifier.split("/"))
-    cursor = candidate
-    while cursor != root and root in cursor.parents:
-        if cursor.is_symlink():
-            raise ValueError("vault pack path cannot contain symlinks")
-        cursor = cursor.parent
-    resolved = candidate.resolve(strict=True)
-    try:
-        resolved.relative_to(root)
-    except ValueError as exc:
-        raise ValueError("vault pack escapes the configured root") from exc
-    return resolved
-
-
 def open_final_test_session(
     request: OpeningRequest,
     *,
     authorizer: OwnerAuthorizer,
     audit_log: str | Path,
     vault_root: str | Path,
+    audit_directory_fd: int | None = None,
+    vault_directory_fd: int | None = None,
+    snapshot_directory: str | None = None,
 ) -> OpenedSession:
     """Open exactly the request's frozen pack collection after durable audit.
 
@@ -346,33 +375,29 @@ def open_final_test_session(
     """
     validate_opening_request(request)
     selection = freeze_pack_selection(request.pack_selection)
-    root = Path(vault_root)
-    if root.is_symlink():
-        raise ValueError("vault root cannot be a symlink")
-    root = root.resolve(strict=True)
-    audit = authorize_and_audit(request, authorizer=authorizer, audit_log=audit_log)
+    audit = authorize_and_audit(
+        request, authorizer=authorizer, audit_log=audit_log, audit_directory_fd=audit_directory_fd
+    )
     snapshots: list[tuple[PackExpectation, PackManifest, BinaryIO]] = []
     remaining = _MAX_SESSION_SNAPSHOT_BYTES
     memory_remaining = _MAX_SESSION_SNAPSHOT_MEMORY_BYTES
+    root_fd = None
     try:
+        root_fd = (
+            os.dup(vault_directory_fd) if vault_directory_fd is not None
+            else open_absolute_directory(os.fspath(vault_root), owner=os.geteuid(), private=True)
+        )
+        if snapshot_directory is not None:
+            space = os.statvfs(snapshot_directory)
+            remaining = min(remaining, max(0, space.f_bavail * space.f_frsize - 64 * 1024 * 1024))
         for expected in selection.packs:
-            resolved = _resolve_selected_pack(root, expected.identifier)
             spool_limit = max(1, min(memory_remaining, remaining))
-            snapshot = tempfile.SpooledTemporaryFile(max_size=spool_limit, mode="w+b")
+            snapshot = tempfile.SpooledTemporaryFile(max_size=spool_limit, mode="w+b", dir=snapshot_directory)
             bounded_snapshot = _SessionSnapshot(snapshot, remaining)
             try:
-                manifest, _ = _verify(
-                    resolved,
-                    expected_partition="blind",
-                    snapshot=bounded_snapshot,
+                manifest = verify_selected_pack(
+                    root_fd, expected, bounded_snapshot, owner=os.geteuid(), expected_partition="blind"
                 )
-                manifest_digest = hashlib.sha256(_manifest_bytes(manifest)).hexdigest()
-                if manifest.kind != expected.kind:
-                    raise ValueError("selected pack kind does not match frozen selection")
-                if manifest_digest != expected.manifest_sha256:
-                    raise ValueError("selected pack manifest does not match frozen selection")
-                if manifest.sha256 != expected.content_sha256:
-                    raise ValueError("selected pack content does not match frozen selection")
                 size = bounded_snapshot.bytes_written
                 remaining -= size
                 memory_remaining = max(0, memory_remaining - min(size, spool_limit))
@@ -390,9 +415,13 @@ def open_final_test_session(
         )
         return OpenedSession(audit, opened)
     except BaseException:
-        for _, _, snapshot in snapshots:
-            snapshot.close()
+        with ExitStack() as cleanup:
+            for _, _, snapshot in snapshots:
+                cleanup.callback(snapshot.close)
         raise
+    finally:
+        if root_fd is not None:
+            os.close(root_fd)
 
 
 def open_final_test_rows(

@@ -1,0 +1,53 @@
+[Unit]
+Description=Kairos offline owner boundary
+After=local-fs.target
+ConditionPathIsReadWrite=/var/lib/kairos-owner/audit
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+ExecStart=/usr/bin/python3 -I -S -B /opt/kairos-owner/releases/@RELEASE@/bootstrap.py /etc/kairos-owner/config.json
+WorkingDirectory=/
+UMask=0077
+Environment=ARROW_NUM_THREADS=2 OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
+UnsetEnvironment=LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT LD_DEBUG LD_DEBUG_OUTPUT LD_PROFILE LD_ORIGIN_PATH LD_ASSUME_KERNEL LD_BIND_NOW LD_BIND_NOT LD_DYNAMIC_WEAK LD_HWCAP_MASK LD_SHOW_AUXV LD_TRACE_LOADED_OBJECTS LD_USE_LOAD_BIAS LD_PREFER_MAP_32BIT_EXEC LD_WARN LD_VERBOSE GLIBC_TUNABLES GCONV_PATH LOCPATH
+UnsetEnvironment=PYTHONPATH PYTHONHOME PYTHONSTARTUP PYTHONUSERBASE PYTHONINSPECT PYTHONBREAKPOINT PYTHONWARNINGS PYTHONPYCACHEPREFIX PYTHONPLATLIBDIR PYTHONSAFEPATH PYTHONIOENCODING PYTHONUTF8 PYTHONHASHSEED PYTHONMALLOC PYTHONMALLOCSTATS PYTHONDEVMODE PYTHONDONTWRITEBYTECODE PYTHONNOUSERSITE PYTHONVERBOSE PYTHONOPTIMIZE PYTHONFAULTHANDLER PYTHONTRACEMALLOC PYTHONPROFILEIMPORTTIME PYTHONINTMAXSTRDIGITS PYTHONEXECUTABLE PYTHON_FROZEN_MODULES PYTHONNODEBUGRANGES PYTHONPERFSUPPORT PYTHON_CPU_COUNT PYTHON_GIL PYTHON_JIT
+RuntimeDirectory=kairos-owner
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=no
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+ReadOnlyPaths=/opt/kairos-owner /etc/kairos-owner /var/lib/kairos-owner/packs
+ReadWritePaths=/var/lib/kairos-owner/audit /var/lib/kairos-owner/snapshots /run/kairos-owner
+InaccessiblePaths=/tmp /var/tmp
+LimitNOFILE=1024
+MemoryMax=1G
+TasksMax=16
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+KillMode=control-group
+SendSIGKILL=yes
+Restart=no
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

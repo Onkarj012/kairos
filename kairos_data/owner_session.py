@@ -48,6 +48,7 @@ def validate_pack_identifier(identifier: str) -> None:
         or "\\" in identifier
         or identifier.startswith("/")
         or ":" in identifier
+        or len(identifier.encode("utf-8")) > 1024
     ):
         raise ValueError("pack identifier must be a relative canonical path")
     parts = identifier.split("/")
